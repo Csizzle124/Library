@@ -299,16 +299,27 @@ function booksView() {
       ${filtersHtml("Search books, authors, tags", true, true)}
       ${examplesNotice()}
       ${outgrownNotice("book")}
-      ${items.length ? `<div class="shelf">${items.map((it) => `
-        <button class="book${picked(it)}" data-open="${esc(it.id)}"${S.sel ? ` aria-pressed="${S.sel.has(it.id)}"` : ""}>
-          <div class="cover">${bookArt(it)}${pickMark(it)}</div>
-          <span class="bt">${esc(it.title)}</span>
-          ${it.author ? `<span class="ba">${esc(it.author)}</span>` : ""}
-          ${tagsHtml(it)}
-        </button>`).join("")}</div>` :
+      ${items.length ? themeShelves(items) :
         `<div class="empty">${S.q || S.age || S.tag ? "No books match that search." : "The grove is waiting for its first story."}</div>`}
     </div>
   </section>`;
+}
+function bookCard(it) {
+  return `<button class="book${picked(it)}" data-open="${esc(it.id)}"${S.sel ? ` aria-pressed="${S.sel.has(it.id)}"` : ""}>
+    <div class="cover">${bookArt(it)}${pickMark(it)}</div>
+    <span class="bt">${esc(it.title)}</span>
+    ${it.author ? `<span class="ba">${esc(it.author)}</span>` : ""}
+    ${tagsHtml(it)}
+  </button>`;
+}
+// One shelf per theme, biggest first, each scrolling sideways. Books without a theme yet sit in "More stories".
+function themeShelves(items) {
+  const groups = {};
+  for (const it of items) (groups[it.theme && THEME_NAMES.includes(it.theme) ? it.theme : OTHER] ||= []).push(it);
+  const names = Object.keys(groups).sort((a, b) => (a === OTHER) - (b === OTHER) || groups[b].length - groups[a].length || THEME_NAMES.indexOf(a) - THEME_NAMES.indexOf(b));
+  if (names.length === 1) return `<div class="shelf">${items.map(bookCard).join("")}</div>`;
+  return names.map((n) => `<h3 class="group theme-h">${esc(n)} <span class="n">${groups[n].length}</span></h3>
+    <div class="shelf shelf-row">${groups[n].map(bookCard).join("")}</div>`).join("");
 }
 function toyCard(it) { return `<button class="toy${picked(it)}" data-open="${esc(it.id)}"${S.sel ? ` aria-pressed="${S.sel.has(it.id)}"` : ""}>${pickMark(it)}${toyBlock(it)}<span class="tt">${esc(it.title)}</span>${tagsHtml(it)}</button>`; }
 function toysView() {
@@ -486,6 +497,9 @@ function editSheet(m) {
         <span class="hint" aria-live="polite">${esc(m.lookup || "Type the ISBN and tap Fill in to get the title, author and cover.")}</span></div>` : ""}
       <div class="field"><label for="f-title">${book ? "Title" : "Name"}</label><input id="f-title" required value="${esc(it.title || "")}"></div>
       ${book ? `<div class="field"><label for="f-author">Author</label><input id="f-author" value="${esc(it.author || "")}"></div>` : ""}
+      ${book && it.list === "own" ? `<div class="field"><label for="f-theme">Shelf</label><select id="f-theme">
+        <option value="">Pick one for me</option>
+        ${THEME_NAMES.map((n) => `<option ${it.theme === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>` : ""}
       <div class="field"><span class="lbl">Ages</span><div class="seg">${AGES.map((a) => `<button type="button" class="chip" data-fage="${esc(a)}" aria-pressed="${it.ages === a}">${esc(a)}</button>`).join("")}</div></div>
       <div class="field"><span class="lbl">Tags</span><div class="seg">${TAGS.map((t) => `<button type="button" class="chip" data-ftag="${esc(t)}" aria-pressed="${(it.tags || []).includes(t)}">${esc(t)}</button>`).join("")}</div></div>
       ${multiKids() ? `<div class="field"><span class="lbl">For which child</span><div class="seg">
@@ -793,6 +807,65 @@ async function scanBarcode() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   if (S.modal) { S.modal.scanning = false; render(); }
 }
+/* ---------- themed shelves ---------- */
+// Each book gets one theme, worked out once from its Open Library subjects and saved with it.
+// The first theme with the most matching subjects wins, so the specific ones are listed first.
+const OTHER = "More stories";
+const THEMES = [
+  ["Dinosaurs", /\bdinosaur/],
+  ["Holidays & celebrations", /\b(christmas|halloween|easter|hanukkah|thanksgiving|valentine|holidays?|birthdays?)\b/],
+  ["Bedtime", /\b(bedtime|sleep|goodnight|good night|lullab|dreams?|night)\b/],
+  ["Things that go", /\b(vehicles?|trucks?|trains?|railroads?|cars|automobiles?|airplanes?|aeroplanes?|boats?|ships?|tractors?|diggers?|construction|transportation|fire engines?)\b/],
+  ["Space", /\b(outer space|space|moon|planets?|stars?|astronauts?|rockets?|astronomy)\b/],
+  ["Under the sea", /\b(ocean|sea|marine|fishes|fish|whales?|sharks?|octopus|underwater|beach)\b/],
+  ["ABCs, numbers & colours", /\b(alphabet|counting|numbers?|colou?rs?|shapes?|opposites|concepts?|words)\b/],
+  ["Monsters & magic", /\b(monsters?|magic|witch|witches|dragons?|fair(y|ies)|wizards?|giants?|ghosts?|imagination|fantasy|trolls?)\b/],
+  ["Feelings & friends", /\b(friendship|friends?|emotions?|feelings?|kindness|love|sharing|anger|fear|self-esteem|manners|behavior)\b/],
+  ["Family", /\b(family|families|mothers?|fathers?|parents?|brothers?|sisters?|siblings?|grandmothers?|grandfathers?|grandparents?|babies|new baby)\b/],
+  ["Nature & seasons", /\b(nature|seasons?|weather|trees?|gardens?|flowers?|snow|rain|autumn|fall|winter|spring|summer|forests?|woods)\b/],
+  ["Fairy tales & rhymes", /\b(fairy tales|folklore|nursery rhymes|fables|legends)\b/],
+  ["Animals", /\b(animals?|bears?|rabbits?|bunn(y|ies)|cats?|kittens?|dogs?|pupp(y|ies)|pigs?|ducks?|mice|mouse|owls?|foxes|fox|elephants?|monkeys?|lions?|tigers?|farm|caterpillars?|insects?|bugs?|birds?|frogs?|penguins?|giraffes?|cows?|horses?|sheep|zoo)\b/],
+  ["Funny stories", /\b(humou?r|humorous|funny|jokes|silly)\b/]
+];
+const THEME_NAMES = [...THEMES.map((t) => t[0]), OTHER];
+function themeFor(subjects) {
+  let best = OTHER, most = 0;
+  const subs = subjects.map((x) => String(x).toLowerCase());
+  for (const [name, re] of THEMES) {
+    const n = subs.filter((x) => re.test(x)).length;
+    if (n > most) { best = name; most = n; }
+  }
+  return best;
+}
+async function subjectsFor(it) {
+  const isbn = cleanIsbn(it.isbn);
+  const url = "https://openlibrary.org/search.json?limit=1&fields=subject&" +
+    (isbn ? "isbn=" + encodeURIComponent(isbn) : "q=" + encodeURIComponent([it.title, it.author].filter(Boolean).join(" ")));
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("search failed");
+  const d = ((await r.json()).docs || [])[0];
+  if (!d && isbn) return subjectsFor({ title: it.title, author: it.author });
+  return (d && d.subject) || [];
+}
+// Fills in themes for books that don't have one yet. Only the owner's browser does this, since only
+// the owner can save; family see whatever was saved.
+let theming = false;
+async function fillThemes() {
+  if (theming || !S.canEdit) return;
+  const todo = S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && !i.theme && i.title);
+  if (!todo.length) return;
+  theming = true;
+  let got = 0;
+  const one = async () => {
+    for (let it; (it = todo.shift()); ) {
+      try { it.theme = themeFor(await subjectsFor(it)); got++; } catch (_) { /* try again next visit */ }
+    }
+  };
+  await Promise.all([one(), one(), one()]);
+  theming = false;
+  if (got) changed();
+}
+
 /* ---------- add several books at once ---------- */
 // Each typed title is looked up on Open Library. Nothing is added until the matches are ticked.
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
@@ -878,7 +951,7 @@ function addPicked() {
   const m = S.modal;
   const pick = m.found.filter((f) => f.on);
   for (const f of pick) S.lib.items.push({ id: uid(), kind: "book", list: "own", title: f.title, author: f.author, isbn: f.isbn, photo: f.cover.replace("-M.jpg", "-L.jpg"), tags: [], ages: "", forKid: "" });
-  S.tab = "books"; S.modal = null; changed();
+  S.tab = "books"; S.modal = null; changed(); fillThemes();
 }
 
 /* ---------- events ---------- */
@@ -967,6 +1040,7 @@ function keepForm() {
   const it = S.modal && S.modal.item; if (!it || S.modal.type !== "edit") return;
   const v = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
   for (const [k, id] of [["title", "f-title"], ["author", "f-author"], ["isbn", "f-isbn"], ["link", "f-link"], ["note", "f-note"]]) { const x = v(id); if (x !== undefined) it[k] = x; }
+  const th = v("f-theme"); if (th !== undefined) { if (th) it.theme = th; else delete it.theme; }
 }
 document.addEventListener("change", async (e) => {
   if (e.target.dataset.bpick !== undefined) { const f = S.modal.found[+e.target.dataset.bpick]; if (f) { f.on = e.target.checked; render(); } return; }
@@ -989,7 +1063,7 @@ document.addEventListener("submit", async (e) => {
     delete it.example;
     const i = S.lib.items.findIndex((x) => x.id === it.id);
     if (i >= 0) S.lib.items[i] = it; else S.lib.items.push(it);
-    S.modal = null; changed();
+    S.modal = null; changed(); fillThemes();
   } else if (e.target.id === "kidform") {
     keepKidForm();
     const m = S.modal, k = m.kid;
@@ -1040,6 +1114,7 @@ async function refreshAuth() {
     S.canEdit = !!ok;
   }
   render();
+  fillThemes();
 }
 
 async function boot() {
