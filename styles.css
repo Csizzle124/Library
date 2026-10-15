@@ -66,7 +66,15 @@ button { cursor: pointer; }
 .btn.gold { background: linear-gradient(180deg, #f3d27a, #c9952c); border-color: #b9851f; color: #2a1d05; }
 .btn.small { padding: 5px 10px; font-size: .8rem; border-radius: 10px; }
 .btn.ghost { background: transparent; }
-.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-block: 14px; }
+.filters { display: flex; flex-direction: column; gap: 10px; padding-block: 14px; min-width: 0; }
+.filter-top { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.chips { display: flex; gap: 8px; align-items: center; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; padding: 0 28px 2px 0; min-width: 0; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent); }
+.chips::-webkit-scrollbar { display: none; }
+.chips .chip { flex: none; white-space: nowrap; }
+.chip-lbl { flex: none; font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; opacity: .7; }
+.chip-sep { flex: none; width: 1px; align-self: stretch; margin: 4px 2px; background: currentColor; opacity: .25; }
+.chip.clear { font-weight: 800; }
+.filter-top .btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 .search { flex: 1 1 220px; min-width: 0; border: 1px solid var(--line); background: var(--paper); border-radius: 12px; padding: 9px 12px; }
 .chip { border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 5px 12px; font-size: .84rem; font-weight: 600; color: var(--muted); }
 .chip[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
@@ -273,6 +281,18 @@ footer.foot-note { display: flex; flex-wrap: wrap; justify-content: space-betwee
 .quick-b span { font-size: .85rem; color: var(--muted); }
 .quick-b:first-child { background: linear-gradient(180deg, #f3d27a, #c9952c); border-color: #b9851f; color: #2a1d05; }
 .quick-b:first-child span { color: #4a3510; }
+/* Set ages for many at once */
+.book.picked .cover, .toy.picked .ph { outline: 3px solid var(--gold, #e2b34f); outline-offset: 3px; }
+.book .cover, .toy { position: relative; }
+.pick-mark { position: absolute; top: 8px; right: 8px; z-index: 2; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 16px; color: #2a1d05; background: rgb(255 255 255 / .85); border: 2px solid #fff; box-shadow: 0 2px 6px rgb(0 0 0 / .3); }
+.picked .pick-mark { background: #f3d27a; border-color: #b9851f; }
+.selbar { position: fixed; z-index: 36; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); width: min(640px, calc(100% - 24px)); background: var(--paper); color: var(--fg); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 14px 34px rgb(0 0 0 / .3); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.selbar-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.selbar-top b { margin-right: auto; }
+.selbar-ages { display: grid; grid-template-columns: repeat(6, auto); gap: 8px; }
+.selbar-ages .chip { min-width: 0; }
+body:has(.selbar) .wrap { padding-bottom: 200px; }
+
 /* Add several books */
 .bulk-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 .bulk-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; min-height: 64px; cursor: pointer; }
@@ -305,6 +325,9 @@ footer.foot-note { display: flex; flex-wrap: wrap; justify-content: space-betwee
   .tab[aria-selected="true"] { background: var(--chip); color: var(--leaf); }
   .tab[aria-selected="true"] .n { background: var(--leaf); color: #fff; }
   .fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+  .selbar { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .selbar-ages { grid-template-columns: repeat(3, 1fr); }
+  body:has(.selbar) .wrap { padding-bottom: calc(240px + env(safe-area-inset-bottom, 0px)); }
   .top { padding-top: 12px; }
 
   /* Bigger, easier taps */

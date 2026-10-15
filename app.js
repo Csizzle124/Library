@@ -36,7 +36,7 @@ const S = {
   lib: null, tab: "books", q: "", age: "", tag: "", kid: "",
   canEdit: false, session: null, loadErr: "",
   claims: {}, showClaimers: false, saving: "", saveErr: "",
-  modal: null, claimOpen: null, rotateMsg: "", myName: ""
+  modal: null, claimOpen: null, rotateMsg: "", myName: "", sel: null
 };
 const TABS = ["books", "toys", "wishlist", "pass"];
 try { S.myName = localStorage.getItem("fl-name") || ""; } catch (e) {}
@@ -200,11 +200,34 @@ function tagsHtml(it) {
   if (it.example) t.push(`<span class="tag ex">Example</span>`);
   return `<div class="meta">${t.join("")}</div>`;
 }
-function filtersHtml(placeholder, withTags = true) {
+// Two rows at most: the search box (plus "Set ages" for the owner), then one row of chips
+// that scrolls sideways on a phone.
+function filtersHtml(placeholder, withTags = true, canSelect = false) {
+  const on = S.age || S.tag;
   return `<div class="filters">
-    <input class="search" id="q" type="search" placeholder="${esc(placeholder)}" value="${esc(S.q)}" aria-label="Search">
-    ${AGES.map((a) => `<button class="chip" data-age="${esc(a)}" aria-pressed="${S.age === a}">${esc(a)}</button>`).join("")}
-    ${withTags ? TAGS.map((t) => `<button class="chip" data-tag="${esc(t)}" aria-pressed="${S.tag === t}">${esc(t)}</button>`).join("") : ""}
+    <div class="filter-top">
+      <input class="search" id="q" type="search" placeholder="${esc(placeholder)}" value="${esc(S.q)}" aria-label="Search">
+      ${canSelect && S.canEdit ? `<button class="btn small" data-act="select" aria-pressed="${!!S.sel}">${S.sel ? "Done" : "Set ages"}</button>` : ""}
+    </div>
+    <div class="chips" role="group" aria-label="Filter">
+      ${on ? `<button class="chip clear" data-act="clear-filters" aria-label="Clear filters">✕ Clear</button>` : ""}
+      <span class="chip-lbl">Ages</span>
+      ${AGES.map((a) => `<button class="chip" data-age="${esc(a)}" aria-pressed="${S.age === a}">${esc(a)}</button>`).join("")}
+      ${withTags ? `<span class="chip-sep" aria-hidden="true"></span>` + TAGS.map((t) => `<button class="chip" data-tag="${esc(t)}" aria-pressed="${S.tag === t}">${esc(t)}</button>`).join("") : ""}
+    </div>
+  </div>`;
+}
+// The owner's "Set ages" mode: tap books or toys to pick them, then tap an age for all of them.
+const picked = (it) => (S.sel && S.sel.has(it.id) ? " picked" : "");
+const pickMark = (it) => (S.sel ? `<span class="pick-mark" aria-hidden="true">${S.sel.has(it.id) ? "✓" : ""}</span>` : "");
+function selectBar() {
+  if (!S.sel) return "";
+  const n = S.sel.size, what = S.tab === "toys" ? "toy" : "book";
+  return `<div class="selbar" role="region" aria-label="Set ages">
+    <div class="selbar-top"><b>${n ? `Set ${n} ${what}${n > 1 ? "s" : ""} to:` : `Tap the ${what}s to change`}</b>
+      <button class="btn small ghost" data-act="select-all">Select all</button>
+      <button class="btn small primary" data-act="select">Done</button></div>
+    ${n ? `<div class="selbar-ages">${AGES.map((a) => `<button class="chip" data-setage="${esc(a)}">${esc(a)}</button>`).join("")}<button class="chip" data-setage="">No age</button></div>` : ""}
   </div>`;
 }
 function examplesNotice() {
@@ -263,8 +286,7 @@ function booksView() {
           <p class="eyebrow">Deep in the whispering woods…</p>
           <h2>The Story Grove</h2>
           <p class="sub">${count("book", "own")} ${count("book", "own") === 1 ? "book" : "books"} in the grove${S.kid ? " for " + esc(S.kid) : ""}. Tap a cover to open it.</p>
-          <div class="hero-acts"><button class="btn gold" data-act="pick-story">Pick tonight's story</button>
-          ${S.canEdit ? `<button class="btn" data-act="add" data-kind="book" data-list="own">Add a book</button>` : ""}</div>
+          <div class="hero-acts"><button class="btn gold" data-act="pick-story">Pick tonight's story</button></div>
         </div>
         <svg class="moon" viewBox="0 0 100 100" aria-hidden="true">
           <defs><radialGradient id="mg" cx="40%" cy="35%"><stop offset="0" stop-color="#fdfbe6"/><stop offset="1" stop-color="#e9e39a"/></radialGradient>
@@ -274,12 +296,12 @@ function booksView() {
         </svg>
       </div>
       ${readingLog()}
-      ${filtersHtml("Search books, authors, tags")}
+      ${filtersHtml("Search books, authors, tags", true, true)}
       ${examplesNotice()}
       ${outgrownNotice("book")}
       ${items.length ? `<div class="shelf">${items.map((it) => `
-        <button class="book" data-open="${esc(it.id)}">
-          <div class="cover">${bookArt(it)}</div>
+        <button class="book${picked(it)}" data-open="${esc(it.id)}"${S.sel ? ` aria-pressed="${S.sel.has(it.id)}"` : ""}>
+          <div class="cover">${bookArt(it)}${pickMark(it)}</div>
           <span class="bt">${esc(it.title)}</span>
           ${it.author ? `<span class="ba">${esc(it.author)}</span>` : ""}
           ${tagsHtml(it)}
@@ -288,7 +310,7 @@ function booksView() {
     </div>
   </section>`;
 }
-function toyCard(it) { return `<button class="toy" data-open="${esc(it.id)}">${toyBlock(it)}<span class="tt">${esc(it.title)}</span>${tagsHtml(it)}</button>`; }
+function toyCard(it) { return `<button class="toy${picked(it)}" data-open="${esc(it.id)}"${S.sel ? ` aria-pressed="${S.sel.has(it.id)}"` : ""}>${pickMark(it)}${toyBlock(it)}<span class="tt">${esc(it.title)}</span>${tagsHtml(it)}</button>`; }
 function toysView() {
   const out = filtered("toy", "own", (i) => !i.stored);
   const away = filtered("toy", "own", (i) => i.stored);
@@ -298,12 +320,11 @@ function toysView() {
     <div class="inner">
       <h2>The Toy Clearing</h2>
       <p class="sub">${out.length} out to play, ${away.length} resting in the hollow.${last != null ? ` Last rotated ${last === 0 ? "today" : last === 1 ? "yesterday" : last + " days ago"}.` : ""}</p>
-      ${filtersHtml("Search toys")}
+      ${filtersHtml("Search toys", true, true)}
       ${examplesNotice()}
       ${outgrownNotice("toy")}
       ${S.rotateMsg ? `<div class="notice"><span>${S.rotateMsg}</span><button class="btn small ghost" data-act="dismiss-rotate">OK</button></div>` : ""}
-      ${S.canEdit ? `<div class="row-acts"><button class="btn primary" data-act="add" data-kind="toy" data-list="own">Add a toy</button>
-        <button class="btn" data-act="rotate" ${away.length ? "" : "disabled title=\"Put some toys away first\""}>Rotate toys</button></div>` : ""}
+      ${S.canEdit ? `<div class="row-acts"><button class="btn" data-act="rotate" ${away.length ? "" : "disabled title=\"Put some toys away first\""}>Rotate toys</button></div>` : ""}
       <h3 class="group">Out to play</h3>
       ${out.length ? `<div class="toybox">${out.map(toyCard).join("")}</div>` :
         `<div class="empty">${S.q || S.age || S.tag ? "No toys match that search." : "The clearing is empty for now."}</div>`}
@@ -359,11 +380,7 @@ function wishView() {
     <p class="sub">${S.canEdit ? "Family and friends can tap “I'll get this” so nobody buys the same gift twice. Names stay hidden here unless you choose to look." : "Planning a gift? Tap “I'll get this” so nobody else buys the same thing."}</p>
     ${filtersHtml("Search the wish list", false)}
     ${examplesNotice()}
-    <div class="row-acts">
-      ${S.canEdit ? `<button class="btn primary" data-act="add" data-kind="toy" data-list="wish">Wish for a toy</button>
-      <button class="btn gold" data-act="add" data-kind="book" data-list="wish">Wish for a book</button>
-      ${claimedCount ? `<button class="btn ghost small" data-act="toggle-claimers">${S.showClaimers ? "Hide who's buying" : "Peek at who's buying"}</button>` : ""}` : ""}
-    </div>
+    ${S.canEdit && claimedCount ? `<div class="row-acts"><button class="btn ghost small" data-act="toggle-claimers">${S.showClaimers ? "Hide who's buying" : "Peek at who's buying"}</button></div>` : ""}
     ${items.length ? `<div class="giftlist">${items.map((it) => `
       <article class="gift${S.claims[it.id] ? " is-claimed" : ""}">
         <span class="ribbon" aria-hidden="true"></span>
@@ -574,7 +591,8 @@ function render() {
         ${S.session ? `<button class="linkish" data-act="signout">Sign out${S.session.user && S.session.user.email ? " (" + esc(S.session.user.email) + ")" : ""}</button>` : `<button class="linkish" data-act="signin">Admin sign in</button>`}
       </footer>
     </div>
-    ${S.canEdit ? `<button class="fab" data-act="quick" aria-label="Add something"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>` : ""}
+    ${selectBar()}
+    ${S.canEdit && !S.sel ? `<button class="fab" data-act="quick" aria-label="Add something"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>` : ""}
     ${sheet}`;
   // Only slide a pop-up in when it first opens, not every time it updates.
   const sh = $(".sheet"); if (sh && S.modal === lastModal) sh.classList.add("still");
@@ -875,11 +893,16 @@ document.addEventListener("click", async (e) => {
   if (!t) return;
   const d = t.dataset;
   if (t.classList.contains("scrim") && e.target !== t) return;
-  if (d.tab) { S.tab = d.tab; S.q = ""; S.age = ""; S.tag = ""; try { localStorage.setItem("ss-tab", S.tab); } catch (_) {} render(); window.scrollTo(0, 0); return; }
+  if (d.tab) { S.sel = null; S.tab = d.tab; S.q = ""; S.age = ""; S.tag = ""; try { localStorage.setItem("ss-tab", S.tab); } catch (_) {} render(); window.scrollTo(0, 0); return; }
   if (d.kid !== undefined) { S.kid = d.kid; try { localStorage.setItem("ss-kid", S.kid); } catch (_) {} render(); return; }
   if (d.age !== undefined) { S.age = S.age === d.age ? "" : d.age; render(); return; }
   if (d.tag !== undefined) { S.tag = S.tag === d.tag ? "" : d.tag; render(); return; }
+  if (d.open && S.sel && t.closest(".shelf, .toybox")) { S.sel.has(d.open) ? S.sel.delete(d.open) : S.sel.add(d.open); render(); return; }
   if (d.open) { const it = findItem(d.open); if (it) { S.modal = { type: "detail", item: it }; render(); } return; }
+  if (d.setage !== undefined && S.sel) {
+    S.lib.items.forEach((i) => { if (S.sel.has(i.id)) i.ages = d.setage; });
+    S.sel = new Set(); changed(); return;
+  }
   if (d.edit) { const it = findItem(d.edit); S.modal = { type: "edit", item: JSON.parse(JSON.stringify(it)), isNew: false }; render(); return; }
   if (d.fage !== undefined) { keepForm(); S.modal.item.ages = S.modal.item.ages === d.fage ? "" : d.fage; render(); return; }
   if (d.ftag) { keepForm(); const tg = S.modal.item.tags || (S.modal.item.tags = []); const i = tg.indexOf(d.ftag); i < 0 ? tg.push(d.ftag) : tg.splice(i, 1); render(); return; }
@@ -901,6 +924,9 @@ document.addEventListener("click", async (e) => {
     case "signout": await sb.auth.signOut(); S.modal = null; break;
     case "share": shareLink(); break;
     case "quick": S.modal = { type: "quick" }; render(); break;
+    case "select": S.sel = S.sel ? null : new Set(); render(); break;
+    case "select-all": (S.tab === "toys" ? filtered("toy", "own") : filtered("book", "own")).forEach((i) => S.sel.add(i.id)); render(); break;
+    case "clear-filters": S.age = ""; S.tag = ""; render(); break;
     case "bulk": S.modal = { type: "bulk", step: "pick", found: [], typed: "" }; render(); break;
     case "bulk-find": findTyped(); break;
     case "bulk-add": addPicked(); break;
@@ -930,6 +956,7 @@ document.addEventListener("click", async (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && S.modal) { S.modal = null; render(); }
+  else if (e.key === "Escape" && S.sel) { S.sel = null; render(); }
   if (e.key === "Enter" && e.target.id === "f-isbn") { e.preventDefault(); runLookup(); }
 });
 document.addEventListener("input", (e) => {
