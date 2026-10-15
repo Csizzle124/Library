@@ -255,6 +255,7 @@ h3.group .n { font-family: var(--f-body); font-size: .78rem; background: var(--c
   .hero { grid-template-columns: 1fr; }
   .moon { display: none; }
   .shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 14px; }
+  .shelf.shelf-row { grid-template-columns: none; grid-auto-columns: 42%; gap: 14px; }
   .toybox { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .row2, .detail { grid-template-columns: 1fr; }
   .detail .art { max-width: 160px; }
@@ -281,6 +282,13 @@ footer.foot-note { display: flex; flex-wrap: wrap; justify-content: space-betwee
 .quick-b span { font-size: .85rem; color: var(--muted); }
 .quick-b:first-child { background: linear-gradient(180deg, #f3d27a, #c9952c); border-color: #b9851f; color: #2a1d05; }
 .quick-b:first-child span { color: #4a3510; }
+/* Themed shelves: one sideways-scrolling row per theme */
+.night h3.theme-h { color: #f0dd8c; margin: 26px 0 4px; }
+.night h3.theme-h .n { background: rgb(255 255 255 / .12); color: #e9f0e4; }
+.shelf.shelf-row { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 150px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: none; padding: 12px 4px 8px; margin: 0 -4px; }
+.shelf.shelf-row::-webkit-scrollbar { display: none; }
+.shelf-row .book { scroll-snap-align: start; }
+
 /* Set ages for many at once */
 .book.picked .cover, .toy.picked .ph { outline: 3px solid var(--gold, #e2b34f); outline-offset: 3px; }
 .book .cover, .toy { position: relative; }
