@@ -22,3 +22,5 @@ static site: `index.html`, `styles.css`, `app.js` and `config.js`, with no build
   `insert into public.editors (email) values ('their@email.com');`. They then use
   "Grown-up sign in" → "Create an account" on the site.
 - **Run it locally:** `python3 -m http.server` in this folder, then open http://localhost:8000.
+- **After changing `app.js` or `styles.css`:** bump the `?v=` number on both in `index.html`, so phones
+  don't keep showing an old cached copy.
