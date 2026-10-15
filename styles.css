@@ -289,6 +289,17 @@ footer.foot-note { display: flex; flex-wrap: wrap; justify-content: space-betwee
 .shelf.shelf-row::-webkit-scrollbar { display: none; }
 .shelf-row .book { scroll-snap-align: start; }
 
+/* Editing the shelf list */
+.shelf-ul { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.shelf-li, .shelf-ul .shelf-edit { display: flex; align-items: center; gap: 6px; padding: 8px 10px 8px 14px; min-height: 52px; }
+.shelf-ul > * + * { border-top: 1px solid var(--line); }
+.shelf-li > span:first-child { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.shelf-li > span:first-child .hint { font-size: .8rem; }
+.shelf-edit { display: flex; gap: 6px; align-items: center; }
+.shelf-edit input { flex: 1; min-width: 0; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 8px 10px; }
+.chip.ghost-chip { border-style: dashed; background: transparent; }
+.sel-shelf { width: 100%; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 12px; padding: 8px 10px; min-height: 42px; font-size: 16px; }
+
 /* Set ages for many at once */
 .book.picked .cover, .toy.picked .ph { outline: 3px solid var(--gold, #e2b34f); outline-offset: 3px; }
 .book .cover, .toy { position: relative; }
@@ -343,7 +354,7 @@ body:has(.selbar) .wrap { padding-bottom: 200px; }
   .btn.small { min-height: 40px; padding: 8px 14px; font-size: .86rem; }
   .chip { min-height: 40px; padding: 8px 14px; font-size: .9rem; }
   .kid { min-height: 44px; }
-  .search, .field input, .field textarea, .field select { min-height: 46px; font-size: 16px; } /* 16px stops iPhone zooming in */
+  .search, .field input, .field textarea, .field select, .shelf-edit input { min-height: 46px; font-size: 16px; } /* 16px stops iPhone zooming in */
   .claimform input { min-height: 40px; font-size: 16px; }
   .linkish { padding: 8px 0; font-size: .9rem; }
   .shop { display: inline-block; padding: 8px 0; }
