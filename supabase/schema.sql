@@ -1,13 +1,12 @@
--- Freddie's Library database. Applied to the Supabase project as migration "init_library".
--- The whole catalog is one JSON document; editors (listed by email) can change it,
--- everyone else can read it. Wishlist claims go through functions so family can
--- claim without an account, and only the person who claimed can undo it.
+-- Freddie's Library database: one list of books and toys, some marked as wishes.
+-- Anyone with the link can read the list and claim a wish. Only the admin (a signed-in
+-- account whose email is in `editors`) can add, change or remove items.
 
 create table public.editors (
   email text primary key
 );
 alter table public.editors enable row level security;
--- no policies: only reachable from security definer functions and the dashboard
+-- no policies: only reachable from is_editor() and the dashboard
 
 create or replace function public.is_editor() returns boolean
 language sql stable security definer set search_path = public as $$
@@ -15,59 +14,34 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.is_editor() to anon, authenticated;
 
-create table public.library (
-  id int primary key default 1 check (id = 1),
-  data jsonb not null,
-  updated_at timestamptz not null default now()
-);
-alter table public.library enable row level security;
-create policy "anyone can read the library" on public.library for select to anon, authenticated using (true);
-create policy "editors can update the library" on public.library for update to authenticated using (public.is_editor()) with check (public.is_editor());
-create policy "editors can create the library" on public.library for insert to authenticated with check (public.is_editor());
-
-create table public.claims (
-  item_id text primary key,
-  name text not null check (char_length(name) between 1 and 40),
-  token text not null,
+create table public.items (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null default 'book' check (kind in ('book', 'toy')),
+  title text not null check (char_length(title) between 1 and 200),
+  author text check (char_length(author) <= 200),
+  isbn text check (char_length(isbn) <= 20),
+  photo text check (char_length(photo) <= 200000), -- a link or a small JPEG data URL
+  note text check (char_length(note) <= 500),
+  wish boolean not null default false,
+  claimed_by text check (char_length(claimed_by) <= 40),
   created_at timestamptz not null default now()
 );
-alter table public.claims enable row level security;
--- no direct table access; see functions below
+alter table public.items enable row level security;
+create policy "anyone with the link can read" on public.items for select to anon, authenticated using (true);
+create policy "admin can add" on public.items for insert to authenticated with check (public.is_editor());
+create policy "admin can change" on public.items for update to authenticated using (public.is_editor()) with check (public.is_editor());
+create policy "admin can remove" on public.items for delete to authenticated using (public.is_editor());
 
-create or replace function public.list_claims(p_token text default null)
-returns table (item_id text, name text, created_at timestamptz, mine boolean)
-language sql stable security definer set search_path = public as $$
-  select c.item_id, c.name, c.created_at, (p_token is not null and c.token = p_token)
-  from public.claims c;
+-- Family claim a wish without an account; only unclaimed wishes can be claimed.
+create or replace function public.claim_wish(p_id uuid, p_name text) returns public.items
+language sql security definer set search_path = public as $$
+  update public.items set claimed_by = left(trim(p_name), 40)
+  where id = p_id and wish and claimed_by is null and char_length(trim(p_name)) > 0
+  returning *;
 $$;
-
-create or replace function public.claim_item(p_item_id text, p_name text, p_token text)
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  if char_length(coalesce(p_token, '')) < 16 then raise exception 'bad token'; end if;
-  if not exists (
-    select 1 from public.library l, jsonb_array_elements(l.data -> 'items') it
-    where it ->> 'id' = p_item_id and it ->> 'list' = 'wish'
-  ) then raise exception 'not on the wishlist'; end if;
-  insert into public.claims (item_id, name, token) values (p_item_id, trim(p_name), p_token);
-end $$;
-
-create or replace function public.unclaim_item(p_item_id text, p_token text)
-returns void language sql security definer set search_path = public as $$
-  delete from public.claims where item_id = p_item_id and (token = p_token or public.is_editor());
+create or replace function public.unclaim_wish(p_id uuid) returns public.items
+language sql security definer set search_path = public as $$
+  update public.items set claimed_by = null where id = p_id returning *;
 $$;
-
-grant execute on function public.list_claims(text) to anon, authenticated;
-grant execute on function public.claim_item(text, text, text) to anon, authenticated;
-grant execute on function public.unclaim_item(text, text) to anon, authenticated;
-
--- Photos: public to view, editors upload
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('photos', 'photos', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
-on conflict (id) do nothing;
-create policy "editors upload photos" on storage.objects for insert to authenticated
-  with check (bucket_id = 'photos' and public.is_editor());
-create policy "editors replace photos" on storage.objects for update to authenticated
-  using (bucket_id = 'photos' and public.is_editor());
-create policy "editors delete photos" on storage.objects for delete to authenticated
-  using (bucket_id = 'photos' and public.is_editor());
+grant execute on function public.claim_wish(uuid, text) to anon, authenticated;
+grant execute on function public.unclaim_wish(uuid) to anon, authenticated;
