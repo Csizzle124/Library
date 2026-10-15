@@ -15,10 +15,8 @@ static site: `index.html`, `styles.css`, `app.js` and `config.js`, with no build
   upload photos. Whoever claims a gift can undo it from the same browser.
 - **ISBN autofill:** typing an ISBN (or scanning its barcode with any phone's camera) fills in the title,
   author and cover from [Open Library](https://openlibrary.org/developers/api).
-- **Add a shelf of books:** the + menu's "Add a shelf of books" reads the titles off a photo of
-  book spines on the phone itself ([Tesseract.js](https://tesseract.projectnaptha.com/), loaded only
-  when used), looks each one up on Open Library, and adds only the ones ticked. Titles can also be
-  typed one per line.
+- **Add several books:** the + menu's "Add several books" takes titles one per line, looks each
+  up on Open Library, and adds only the ones ticked.
 
 ## Common jobs
 
