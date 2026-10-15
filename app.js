@@ -55,8 +55,17 @@ const niceDate = (k) => { const [y, m, d] = k.split("-").map(Number); return new
 /* ---------- loading ---------- */
 async function load() {
   const { data, error } = await sb.from("library").select("data").eq("id", 1).maybeSingle();
-  if (error) { S.loadErr = "The library couldn't be reached just now. Try reloading in a moment."; S.lib = S.lib || JSON.parse(JSON.stringify(EXAMPLES)); }
-  else { S.loadErr = ""; S.lib = (data && data.data) || JSON.parse(JSON.stringify(EXAMPLES)); }
+  if (error) {
+    // No signal: fall back to the copy saved on this phone the last time it loaded.
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem("fl-library") || "null"); } catch (_) {}
+    S.offline = true;
+    S.loadErr = saved ? "No connection right now, so this is the copy saved on this phone. Changes can't be saved until you're back online." : "The library couldn't be reached just now. Try reloading in a moment.";
+    S.lib = S.lib || saved || JSON.parse(JSON.stringify(EXAMPLES));
+  } else {
+    S.offline = false; S.loadErr = ""; S.lib = (data && data.data) || JSON.parse(JSON.stringify(EXAMPLES));
+    try { localStorage.setItem("fl-library", JSON.stringify(S.lib)); } catch (_) {}
+  }
   if (!Array.isArray(S.lib.items)) S.lib.items = [];
   if (!Array.isArray(S.lib.kids)) S.lib.kids = [];
   if (S.kid && (!multiKids() || !S.lib.kids.some((k) => k.name === S.kid))) S.kid = "";
@@ -80,6 +89,7 @@ async function save() {
     render();
     return;
   }
+  try { localStorage.setItem("fl-library", JSON.stringify(S.lib)); } catch (_) {}
   S.saving = "Saved"; render();
   setTimeout(() => { if (S.saving === "Saved") { S.saving = ""; render(); } }, 2500);
 }
@@ -540,10 +550,10 @@ function render() {
   const caret = active === "q" ? $("#q").selectionStart : null;
   const status = S.saveErr ? `<span class="pill err">${esc(S.saveErr)}</span>` : S.saving ? `<span class="pill${S.saving === "Saved" ? " ok" : ""}">${esc(S.saving)}</span>` : "";
   const mode = S.canEdit ? `<span class="pill">You can edit</span>` : "";
-  const tabs = [["books", "Books", count("book", "own")], ["toys", "Toys", count("toy", "own")], ["wishlist", "Wishing Well", count(null, "wish")], ["pass", "Pass-Along", count(null, "pass")]];
+  const tabs = [["books", "Books", count("book", "own")], ["toys", "Toys", count("toy", "own")], ["wishlist", "Wishes", count(null, "wish")], ["pass", "Pass-Along", count(null, "pass")]];
   const view = S.tab === "books" ? booksView() : S.tab === "toys" ? toysView() : S.tab === "wishlist" ? wishView() : passView();
   let sheet = "";
-  if (S.modal) sheet = S.modal.type === "detail" ? detailSheet(S.modal) : S.modal.type === "edit" ? editSheet(S.modal) : S.modal.type === "kid" ? kidSheet(S.modal) : S.modal.type === "story" ? storySheet(S.modal) : S.modal.type === "auth" ? authSheet(S.modal) : renameSheet();
+  if (S.modal) sheet = S.modal.type === "detail" ? detailSheet(S.modal) : S.modal.type === "edit" ? editSheet(S.modal) : S.modal.type === "kid" ? kidSheet(S.modal) : S.modal.type === "story" ? storySheet(S.modal) : S.modal.type === "auth" ? authSheet(S.modal) : S.modal.type === "quick" ? quickSheet() : renameSheet();
   $("#root").innerHTML = `
     <div class="wrap">
       <header class="top">
@@ -551,11 +561,11 @@ function render() {
           <svg width="44" height="44" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3c-11 0-20 6-20 14 0 2 2 3 4 3h32c2 0 4-1 4-3 0-8-9-14-20-14z" fill="#c0473a"/><circle cx="15" cy="11" r="2.6" fill="#fdfbe6"/><circle cx="27" cy="8" r="2" fill="#fdfbe6"/><circle cx="35" cy="14" r="2.4" fill="#fdfbe6"/><path d="M14 20h20v18a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4z" fill="#efe6cf"/><path d="M21 42v-9a3 3 0 0 1 6 0v9z" fill="#6a3a22"/><circle cx="31" cy="27" r="2.2" fill="#e2b34f"/><path d="M2 44c6-3 10-3 22-3s16 0 22 3z" fill="#2f7a4f"/></svg>
           <div style="min-width:0"><h1>${esc(S.lib.name || "Our Little Library")}</h1><p>Books, toys and wishes</p></div>
         </div>
-        <div class="tools">${status}${mode}${S.canEdit ? `<button class="btn small" data-act="rename">Rename</button><button class="btn small" data-act="copy-link">Copy share link</button>` : ""}</div>
+        <div class="tools">${status}${mode}${S.canEdit ? `<button class="btn small" data-act="rename">Rename</button>` : ""}<button class="btn small" data-act="share">${shareIcon} Share</button></div>
       </header>
       ${S.loadErr ? `<div class="notice"><span>${esc(S.loadErr)}</span></div>` : ""}
       ${kidBar()}
-      <nav class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${l}<span class="n">${n}</span></button>`).join("")}</nav>
+      <nav class="tabs" role="tablist" aria-label="Sections">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}"><span class="ti">${TAB_ICONS[k]}</span><span class="tl">${l}</span><span class="n">${n}</span></button>`).join("")}</nav>
       <main>${view}</main>
       <footer class="foot-note">
         <span>${S.canEdit ? "Send family this page's link so they can browse and claim wish-list gifts. They don't need an account." : "Made with love for the little readers and players in this family."}</span>
@@ -563,9 +573,41 @@ function render() {
         ${S.session ? `<button class="linkish" data-act="signout">Sign out${S.session.user && S.session.user.email ? " (" + esc(S.session.user.email) + ")" : ""}</button>` : `<button class="linkish" data-act="signin">Admin sign in</button>`}
       </footer>
     </div>
+    ${S.canEdit ? `<button class="fab" data-act="quick" aria-label="Add something"><svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/></svg></button>` : ""}
     ${sheet}`;
   if (active) { const el = document.getElementById(active); if (el) { el.focus(); if (caret != null && el.setSelectionRange) el.setSelectionRange(caret, caret); } }
   if (S.tab === "books") startStars();
+}
+const shareIcon = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" style="vertical-align:-2px"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ico = (d) => `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const TAB_ICONS = {
+  books: ico("M4 5a2 2 0 0 1 2-2h5v17H6a2 2 0 0 0-2 2zM20 5a2 2 0 0 0-2-2h-5v17h5a2 2 0 0 1 2 2z"),
+  toys: ico("M8 8a4 4 0 1 1 8 0M5 8h14l-1.5 11a2 2 0 0 1-2 2h-7a2 2 0 0 1-2-2zM9 13h6"),
+  wishlist: ico("M12 2.8l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"),
+  pass: ico("M3 8l9-5 9 5v9l-9 5-9-5zM3 8l9 5 9-5M12 13v9")
+};
+// The + button's menu: the quickest routes to adding something.
+function quickSheet() {
+  const big = (act, label, sub, extra = "") => `<button class="quick-b" data-act="${act}" ${extra}><b>${label}</b><span>${sub}</span></button>`;
+  return `<div class="scrim" data-act="close"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="qt">
+    <header><h3 id="qt">Add to the library</h3><button class="btn small ghost" data-act="close">Close</button></header>
+    <div class="content quick">
+      ${canScan ? big("quick-scan", "Scan a book", "Point the camera at the barcode") : ""}
+      ${big("add", "Add a book", "Type the title or ISBN", 'data-kind="book" data-list="own"')}
+      ${big("add", "Add a toy", "Name it and snap a photo", 'data-kind="toy" data-list="own"')}
+      ${big("add", "Wish for a book", "Family can say they'll get it", 'data-kind="book" data-list="wish"')}
+      ${big("add", "Wish for a toy", "Family can say they'll get it", 'data-kind="toy" data-list="wish"')}
+    </div></div></div>`;
+}
+async function shareLink() {
+  const url = location.origin + location.pathname;
+  const name = S.lib.name || "Freddie's Library";
+  if (navigator.share) {
+    try { await navigator.share({ title: name, text: name + ": books, toys and the wish list", url }); } catch (_) {}
+    return;
+  }
+  try { await navigator.clipboard.writeText(url); S.saving = "Link copied"; } catch (_) { S.saveErr = "Copy this page's address from your browser to share it."; }
+  render(); setTimeout(() => { if (S.saving === "Link copied") { S.saving = ""; render(); } }, 2500);
 }
 function authSheet(m) {
   const up = m.mode === "up";
@@ -740,7 +782,7 @@ document.addEventListener("click", async (e) => {
   if (!t) return;
   const d = t.dataset;
   if (t.classList.contains("scrim") && e.target !== t) return;
-  if (d.tab) { S.tab = d.tab; S.q = ""; S.age = ""; S.tag = ""; try { localStorage.setItem("ss-tab", S.tab); } catch (_) {} render(); return; }
+  if (d.tab) { S.tab = d.tab; S.q = ""; S.age = ""; S.tag = ""; try { localStorage.setItem("ss-tab", S.tab); } catch (_) {} render(); window.scrollTo(0, 0); return; }
   if (d.kid !== undefined) { S.kid = d.kid; try { localStorage.setItem("ss-kid", S.kid); } catch (_) {} render(); return; }
   if (d.age !== undefined) { S.age = S.age === d.age ? "" : d.age; render(); return; }
   if (d.tag !== undefined) { S.tag = S.tag === d.tag ? "" : d.tag; render(); return; }
@@ -764,7 +806,9 @@ document.addEventListener("click", async (e) => {
     case "signin": S.modal = { type: "auth", mode: "in" }; render(); $("#a-email") && $("#a-email").focus(); break;
     case "auth-mode": S.modal.mode = S.modal.mode === "in" ? "up" : "in"; S.modal.msg = ""; render(); break;
     case "signout": await sb.auth.signOut(); S.modal = null; break;
-    case "copy-link": try { await navigator.clipboard.writeText(location.origin + location.pathname); S.saving = "Link copied"; } catch (_) { S.saveErr = "Copy this page's address from your browser to share it."; } render(); setTimeout(() => { if (S.saving === "Link copied") { S.saving = ""; render(); } }, 2500); break;
+    case "share": shareLink(); break;
+    case "quick": S.modal = { type: "quick" }; render(); break;
+    case "quick-scan": S.tab = "books"; S.modal = { type: "edit", isNew: true, item: { id: uid(), kind: "book", list: "own", title: "", tags: [], ages: "", forKid: "" } }; render(); scanBarcode(); break;
     case "add": S.modal = { type: "edit", isNew: true, item: { id: uid(), kind: d.kind, list: d.list, title: "", tags: [], ages: kidAgeGroup(kidByName(S.kid)), forKid: S.kid } }; render(); $("#f-title") && $("#f-title").focus(); break;
     case "add-kid": S.modal = { type: "kid", isNew: true, kid: { id: uid(), name: "", animal: ANIMALS[S.lib.kids.length % ANIMALS.length], color: KIDCOLORS[S.lib.kids.length % KIDCOLORS.length], birthday: "" } }; render(); $("#k-name") && $("#k-name").focus(); break;
     case "edit-kid": { const k = kidByName(S.kid); if (k) { S.modal = { type: "kid", isNew: false, orig: k.name, kid: { ...k } }; render(); } break; }
@@ -888,4 +932,6 @@ async function boot() {
   setInterval(() => { if (document.visibilityState === "visible") loadClaims(); }, 60000);
 }
 boot();
+// Lets the library open with no signal and be added to the home screen as an app.
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 

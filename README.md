@@ -24,3 +24,6 @@ static site: `index.html`, `styles.css`, `app.js` and `config.js`, with no build
 - **Run it locally:** `python3 -m http.server` in this folder, then open http://localhost:8000.
 - **After changing `app.js` or `styles.css`:** bump the `?v=` number on both in `index.html`, so phones
   don't keep showing an old cached copy.
+- **Phone app:** `manifest.webmanifest` and `icons/` let it be added to the home screen; `sw.js`
+  keeps a copy so it opens offline (the last library loaded is saved on the phone). Bump the
+  `CACHE` name in `sw.js` along with the `?v=` numbers when files change.
