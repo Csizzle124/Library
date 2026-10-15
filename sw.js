@@ -1,7 +1,7 @@
 // Keeps a copy of the site on the phone so it opens with no signal.
 // Site files: try the network first (so updates show up), fall back to the saved copy.
 // Pinned libraries and fonts: use the saved copy first, since they never change.
-const CACHE = "freddies-library-v6";
+const CACHE = "freddies-library-v7";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/apple-touch-icon.png"];
 const PINNED = ["cdn.jsdelivr.net", "fastly.jsdelivr.net", "fonts.googleapis.com", "fonts.gstatic.com"];
 

@@ -597,7 +597,7 @@ function quickSheet() {
     <header><h3 id="qt">Add to the library</h3><button class="btn small ghost" data-act="close">Close</button></header>
     <div class="content quick">
       ${canScan ? big("quick-scan", "Scan a book", "Point the camera at the barcode") : ""}
-      ${big("bulk", "Add a shelf of books", "Snap the spines, tick the ones to add")}
+      ${big("bulk", "Add several books", "Type the titles, tick the ones to add")}
       ${big("add", "Add a book", "Type the title or ISBN", 'data-kind="book" data-list="own"')}
       ${big("add", "Add a toy", "Name it and snap a photo", 'data-kind="toy" data-list="own"')}
       ${big("add", "Wish for a book", "Family can say they'll get it", 'data-kind="book" data-list="wish"')}
@@ -775,9 +775,8 @@ async function scanBarcode() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   if (S.modal) { S.modal.scanning = false; render(); }
 }
-/* ---------- add a shelf of books from a photo ---------- */
-// The phone reads the spine text itself (Tesseract, loaded only when needed), then each bit of
-// text is looked up on Open Library. Nothing is added until the matches are ticked.
+/* ---------- add several books at once ---------- */
+// Each typed title is looked up on Open Library. Nothing is added until the matches are ticked.
 const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 const words = (s) => norm(s).split(" ").filter((w) => w.length > 2);
 function bulkSheet(m) {
@@ -787,84 +786,19 @@ function bulkSheet(m) {
       <span class="bulk-cover">${f.cover ? `<img src="${esc(f.cover)}" alt="" loading="lazy">` : ""}</span>
       <span class="bulk-t"><b>${esc(f.title)}</b>${f.author ? `<span>${esc(f.author)}</span>` : ""}${f.dup ? `<em>Already in the library</em>` : !f.key ? `<em>Not found on Open Library, adds as typed</em>` : ""}</span>
     </label>`;
-  const misses = m.misses || [];
   const body = m.step === "reading"
-    ? `<div class="bulk-busy"><span class="spinner" aria-hidden="true"></span><p aria-live="polite">${esc(m.msg || "Reading the spines…")}</p><span class="hint">This can take up to a minute on a phone.</span></div>`
+    ? `<div class="bulk-busy"><span class="spinner" aria-hidden="true"></span><p aria-live="polite">${esc(m.msg || "Looking up books…")}</p></div>`
     : `${m.found.length ? `<div class="bulk-list">${m.found.map(row).join("")}</div>` : ""}
       ${m.msg ? `<p class="hint" aria-live="polite" style="margin:0">${esc(m.msg)}</p>` : ""}
-      ${misses.length ? `<details class="bulk-miss"><summary>${misses.length} bit${misses.length > 1 ? "s" : ""} of text didn't match a book</summary><p>${misses.map(esc).join(" · ")}</p><span class="hint">Type any real titles in the box below.</span></details>` : ""}
-      <label class="quick-b bulk-snap" for="b-photo"><b>${m.found.length ? "Snap another shelf" : "Snap the shelf"}</b><span>Spines facing the camera, close enough to read, good light</span></label>
-      <input id="b-photo" type="file" accept="image/*" hidden>
-      <div class="field"><label for="b-typed">Or type titles, one per line</label>
-        <textarea id="b-typed" rows="3" placeholder="Goodnight Moon&#10;The Gruffalo">${esc(m.typed || "")}</textarea>
+      <div class="field"><label for="b-typed">Titles, one per line</label>
+        <textarea id="b-typed" rows="5" placeholder="Goodnight Moon&#10;The Gruffalo">${esc(m.typed || "")}</textarea>
         <button type="button" class="btn" data-act="bulk-find" style="align-self:flex-start">Look these up</button></div>`;
   return `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="bt">
-    <header><h3 id="bt">Add a shelf of books</h3><button class="btn small ghost" data-act="close">Cancel</button></header>
+    <header><h3 id="bt">Add several books</h3><button class="btn small ghost" data-act="close">Cancel</button></header>
     <div class="content">${body}</div>
     ${m.step !== "reading" && m.found.length ? `<div class="sheet-foot"><button class="btn primary big" data-act="bulk-add" ${picked ? "" : "disabled"}>${picked ? `Add ${picked} book${picked > 1 ? "s" : ""}` : "Tick the books to add"}</button></div>` : ""}
   </div></div>`;
 }
-let ocrWorker = null;
-async function ocr() {
-  if (ocrWorker) return ocrWorker;
-  const { default: Tesseract } = await import("https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.esm.min.js");
-  ocrWorker = Tesseract.createWorker("eng", 1, { errorHandler: () => {} });
-  ocrWorker.catch(() => { ocrWorker = null; });
-  return ocrWorker;
-}
-function loadImage(file) {
-  return new Promise((res, rej) => {
-    const url = URL.createObjectURL(file), img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); res(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("That file isn't a picture we can read.")); };
-    img.src = url;
-  });
-}
-function turned(img, deg) {
-  const k = Math.min(1, 2000 / Math.max(img.width, img.height));
-  const w = Math.round(img.width * k), hh = Math.round(img.height * k);
-  const side = deg % 180 !== 0;
-  const c = document.createElement("canvas"); c.width = side ? hh : w; c.height = side ? w : hh;
-  const g = c.getContext("2d");
-  g.translate(c.width / 2, c.height / 2); g.rotate((deg * Math.PI) / 180);
-  g.drawImage(img, -w / 2, -hh / 2, w, hh);
-  return c;
-}
-// Spines come in every colour, so one light/dark cut-off loses some titles. This marks each pixel
-// against its own neighbourhood instead, which keeps pale-on-gold and dark-on-cream text alike.
-function localContrast(src) {
-  const w = src.width, hh = src.height, r = Math.max(6, Math.round(Math.max(w, hh) / 60));
-  const img = src.getContext("2d").getImageData(0, 0, w, hh), px = img.data;
-  const gray = new Float32Array(w * hh), sum = new Float64Array((w + 1) * (hh + 1));
-  for (let i = 0; i < w * hh; i++) gray[i] = px[i * 4] * 0.299 + px[i * 4 + 1] * 0.587 + px[i * 4 + 2] * 0.114;
-  for (let y = 0; y < hh; y++) {
-    let row = 0;
-    for (let x = 0; x < w; x++) { row += gray[y * w + x]; sum[(y + 1) * (w + 1) + x + 1] = sum[y * (w + 1) + x + 1] + row; }
-  }
-  for (let y = 0; y < hh; y++) {
-    const y0 = Math.max(0, y - r), y1 = Math.min(hh, y + r + 1);
-    for (let x = 0; x < w; x++) {
-      const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
-      const mean = (sum[y1 * (w + 1) + x1] - sum[y0 * (w + 1) + x1] - sum[y1 * (w + 1) + x0] + sum[y0 * (w + 1) + x0]) / ((x1 - x0) * (y1 - y0));
-      const v = gray[y * w + x] > mean + 8 ? 0 : 255, i = (y * w + x) * 4;
-      px[i] = px[i + 1] = px[i + 2] = v; px[i + 3] = 255;
-    }
-  }
-  const c = document.createElement("canvas"); c.width = w; c.height = hh;
-  c.getContext("2d").putImageData(img, 0, 0);
-  return c;
-}
-function spineLines(data) {
-  const out = [];
-  for (const line of data.lines || []) {
-    if (line.confidence < 55) continue;
-    const good = (line.words || []).filter((w) => w.confidence >= 55).map((w) => w.text);
-    const text = good.join(" ").replace(/[^A-Za-z0-9'&:,\- ]/g, " ").replace(/\s+/g, " ").trim();
-    if ((text.match(/[A-Za-z]/g) || []).length >= 5 && words(text).length) out.push(text);
-  }
-  return out;
-}
-const lineScore = (data) => (data.lines || []).filter((l) => l.confidence >= 55).reduce((n, l) => n + l.text.trim().length, 0);
 async function searchBook(q) {
   const r = await fetch("https://openlibrary.org/search.json?limit=5&fields=key,title,author_name,cover_i,isbn,edition_count&q=" + encodeURIComponent(q));
   if (!r.ok) throw new Error("search failed");
@@ -873,7 +807,7 @@ async function searchBook(q) {
   for (const d of (await r.json()).docs || []) {
     const have = new Set(words(d.title + " " + (d.author_name || []).join(" ")));
     const titleWords = words(d.title);
-    // Most of what was read must be in the book's title or author, and some of it in the title.
+    // Most of what was typed must be in the book's title or author, and some of it in the title.
     const score = qs.filter((w) => have.has(w)).length / qs.length;
     if (score < 0.6 || !titleWords.some((w) => qs.includes(w))) continue;
     const s = score + Math.min(d.edition_count || 0, 200) / 2000;
@@ -886,13 +820,12 @@ async function searchBook(q) {
     cover: best.cover_i ? `https://covers.openlibrary.org/b/id/${best.cover_i}-M.jpg` : ""
   };
 }
-// Looks up each bit of text (a few at a time) and adds the matches to the tick list.
-async function matchTexts(texts, typed) {
+// Looks up each title (a few at a time) and adds the matches to the tick list.
+async function matchTexts(texts) {
   const m = S.modal;
   const seen = new Set(texts.map(norm));
   texts = [...seen].slice(0, 40).map((n) => texts.find((t) => norm(t) === n));
   const owned = new Set(S.lib.items.filter((i) => i.kind === "book" && i.list === "own").map((i) => norm(i.title)));
-  const misses = [];
   let done = 0, failed = 0;
   const queue = texts.slice();
   const one = async () => {
@@ -904,54 +837,12 @@ async function matchTexts(texts, typed) {
       if (b && !m.found.some((f) => f.key === b.key)) {
         const dup = owned.has(norm(b.title));
         m.found.push({ ...b, on: !dup, dup });
-      } else if (!b && typed) m.found.push({ key: "", title: t, author: "", isbn: "", cover: "", on: true, dup: owned.has(norm(t)) });
-      else if (!b) misses.push(t);
+      } else if (!b) m.found.push({ key: "", title: t, author: "", isbn: "", cover: "", on: true, dup: owned.has(norm(t)) });
       if (m.step === "reading") { m.msg = `Looking up books… ${done} of ${texts.length}`; render(); }
     }
   };
   await Promise.all([one(), one(), one(), one()]);
-  return { misses, failed: failed === texts.length && texts.length > 0 };
-}
-async function readShelf(file) {
-  const m = S.modal;
-  m.step = "reading"; m.msg = "Getting the reader ready…"; render();
-  try {
-    const img = await loadImage(file);
-    const worker = await ocr();
-    const texts = [];
-    // Books stand upright, so read the photo turned each way; the right way round reads cleanly.
-    const passes = [90, 270, 0];
-    const runs = [];
-    for (let i = 0; i < passes.length + 1; i++) {
-      if (S.modal !== m) return;
-      m.msg = `Reading the spines… step ${i + 1} of ${passes.length + 1}`; render();
-      if (i === passes.length) {
-        // One more look at the best-reading direction without the clean-up, for anything it smudged.
-        const best = runs.slice(0, 2).sort((a, b) => b.score - a.score)[0];
-        const { data } = await worker.recognize(turned(img, best.deg));
-        texts.push(...spineLines(data));
-      } else {
-        const deg = passes[i];
-        const { data } = await worker.recognize(localContrast(turned(img, deg)));
-        runs.push({ deg, score: lineScore(data) });
-        texts.push(...spineLines(data));
-      }
-    }
-    if (S.modal !== m) return;
-    const before = m.found.length;
-    const { misses, failed } = await matchTexts(texts, false);
-    if (S.modal !== m) return;
-    m.misses = [...new Set([...(m.misses || []), ...misses])];
-    const got = m.found.length - before;
-    m.msg = failed ? "Couldn't reach Open Library just now. Try again in a moment."
-      : !texts.length ? "Couldn't make out any writing. Try closer, straight on, with more light, or type the titles below."
-      : got ? `Found ${got} book${got > 1 ? "s" : ""}. Untick any that are wrong.` : "Couldn't match any books from that photo. Try closer, or type the titles below.";
-  } catch (err) {
-    if (S.modal !== m) return;
-    const why = String((err && err.message) || err);
-    m.msg = why.includes("picture") ? why : "The reader couldn't load. Check your connection, or type the titles below.";
-  }
-  m.step = "review"; render();
+  return { failed: failed === texts.length && texts.length > 0 };
 }
 async function findTyped() {
   const m = S.modal, el = $("#b-typed");
@@ -959,7 +850,7 @@ async function findTyped() {
   if (!lines.length) return;
   m.typed = ""; m.step = "reading"; m.msg = "Looking up books…"; render();
   const before = m.found.length;
-  const { failed } = await matchTexts(lines, true);
+  const { failed } = await matchTexts(lines);
   if (S.modal !== m) return;
   const got = m.found.length - before;
   m.msg = failed ? "Couldn't reach Open Library, so these were added as typed." : `Added ${got} to the list below.`;
@@ -1051,7 +942,6 @@ function keepForm() {
   for (const [k, id] of [["title", "f-title"], ["author", "f-author"], ["isbn", "f-isbn"], ["link", "f-link"], ["note", "f-note"]]) { const x = v(id); if (x !== undefined) it[k] = x; }
 }
 document.addEventListener("change", async (e) => {
-  if (e.target.id === "b-photo" && e.target.files[0]) { readShelf(e.target.files[0]); return; }
   if (e.target.dataset.bpick !== undefined) { const f = S.modal.found[+e.target.dataset.bpick]; if (f) { f.on = e.target.checked; render(); } return; }
   if (e.target.id === "f-photo" && e.target.files[0]) {
     keepForm();
