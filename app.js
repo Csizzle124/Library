@@ -59,7 +59,7 @@ async function load() {
   else { S.loadErr = ""; S.lib = (data && data.data) || JSON.parse(JSON.stringify(EXAMPLES)); }
   if (!Array.isArray(S.lib.items)) S.lib.items = [];
   if (!Array.isArray(S.lib.kids)) S.lib.kids = [];
-  if (S.kid && !S.lib.kids.some((k) => k.name === S.kid)) S.kid = "";
+  if (S.kid && (!multiKids() || !S.lib.kids.some((k) => k.name === S.kid))) S.kid = "";
 }
 
 /* ---------- saving ---------- */
@@ -105,6 +105,8 @@ async function loadClaims() {
 }
 /* ---------- kids ---------- */
 const kidByName = (n) => S.lib.kids.find((k) => k.name === n);
+// With one child (or none) the child picker and per-child options stay hidden.
+const multiKids = () => S.lib.kids.length > 1;
 function kidAgeGroup(kid) {
   if (!kid || !kid.birthday) return "";
   const [y, m, d] = kid.birthday.split("-").map(Number);
@@ -183,7 +185,7 @@ function toyBlock(it) {
 function tagsHtml(it) {
   const t = (it.tags || []).map((x) => `<span class="tag${x === "Favorite" ? " fav" : ""}">${esc(x)}</span>`);
   if (it.ages) t.unshift(`<span class="tag">Ages ${esc(it.ages)}</span>`);
-  if (it.forKid) t.push(`<span class="tag">For ${esc(it.forKid)}</span>`);
+  if (it.forKid && multiKids()) t.push(`<span class="tag">For ${esc(it.forKid)}</span>`);
   if (it.reads && it.reads.length) t.push(`<span class="tag reads">Read ${it.reads.length}×</span>`);
   if (it.example) t.push(`<span class="tag ex">Example</span>`);
   return `<div class="meta">${t.join("")}</div>`;
@@ -208,7 +210,7 @@ function outgrownNotice(kind) {
     <button class="btn small" data-act="move-outgrown" data-kind="${kind}">Move to pass-along</button></div>`;
 }
 function kidBar() {
-  if (!S.lib.kids.length && !S.canEdit) return "";
+  if (!multiKids()) return "";
   const sel = kidByName(S.kid);
   return `<div class="kidbar" role="group" aria-label="Show items for">
     <button class="kid" data-kid="" aria-pressed="${!S.kid}"><span class="kid-all">${leafSvg(18, "currentColor")}</span>Everyone</button>
@@ -226,10 +228,10 @@ function readingLog() {
   const tally = {};
   for (const r of reads) tally[r.it.id] = (tally[r.it.id] || 0) + 1;
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, n]) => ({ it: S.lib.items.find((i) => i.id === id), n })).filter((x) => x.it);
-  const who = S.kid ? S.kid + "'s" : "Family";
+  const who = S.kid ? S.kid + "'s" : multiKids() ? "Family" : "";
   const last = reads.slice().sort((a, b) => (a.d < b.d ? 1 : -1))[0];
   return `<div class="log" aria-label="${esc(who)} reading log">
-    <div class="log-h"><span class="lbl">${esc(who)} reading log</span>${last ? `<span class="hint-n">Last read: ${esc(last.it.title)}, ${esc(niceDate(last.d))}</span>` : ""}</div>
+    <div class="log-h"><span class="lbl">${who ? esc(who) + " reading log" : "Reading log"}</span>${last ? `<span class="hint-n">Last read: ${esc(last.it.title)}, ${esc(niceDate(last.d))}</span>` : ""}</div>
     <div class="log-stats">
       <div><b>${st}</b><span>${st === 1 ? "night" : "nights"} in a row</span></div>
       <div><b>${week}</b><span>${week === 1 ? "story" : "stories"} this week</span></div>
@@ -380,7 +382,7 @@ function passView() {
     ${groups.length ? groups.map(([p, arr]) => `<h3 class="group">${esc(p)} <span class="n">${arr.length}</span></h3>
       <div class="passlist">${arr.map((it) => `<button class="passitem" data-open="${esc(it.id)}">
         <span class="mini${it.kind === "toy" ? " sq" : ""}">${it.kind === "book" ? bookArt(it) : toyBlock(it)}</span>
-        <span class="pi-body"><span class="pi-t">${esc(it.title)}</span><span class="hint">${it.kind === "book" ? "Book" : "Toy"}${it.ages ? " · ages " + esc(it.ages) : ""}${it.forKid ? " · was " + esc(it.forKid) + "'s" : ""}</span></span>
+        <span class="pi-body"><span class="pi-t">${esc(it.title)}</span><span class="hint">${it.kind === "book" ? "Book" : "Toy"}${it.ages ? " · ages " + esc(it.ages) : ""}${it.forKid && multiKids() ? " · was " + esc(it.forKid) + "'s" : ""}</span></span>
       </button>`).join("")}</div>`).join("") :
       `<div class="empty">The box is empty. When something is outgrown, open it and tap “Move to pass-along”.</div>`}
   </section>`;
@@ -407,7 +409,7 @@ function detailSheet(m) {
   if (book && it.list === "own") {
     const kids = S.lib.kids;
     readBox = `<div class="readbox">
-      ${S.canEdit ? `<div class="field"><span class="lbl">We read this tonight</span><div class="seg">${kids.length ? kids.map((k) => `<button class="chip kidchip" data-read="${esc(k.name)}">${animalSvg(k.animal, k.color, 20)} ${esc(k.name)}</button>`).join("") + `<button class="chip" data-read="">Together</button>` : `<button class="btn gold" data-read="">We read this tonight</button>`}</div></div>` : ""}
+      ${S.canEdit ? `<div class="field">${multiKids() ? `<span class="lbl">We read this tonight</span>` : ""}<div class="seg">${multiKids() ? kids.map((k) => `<button class="chip kidchip" data-read="${esc(k.name)}">${animalSvg(k.animal, k.color, 20)} ${esc(k.name)}</button>`).join("") + `<button class="chip" data-read="">Together</button>` : `<button class="btn gold" data-read="">We read this tonight</button>`}</div></div>` : ""}
       ${m.justRead ? `<p class="claimed">${leafSvg(14, "currentColor")} Logged for tonight.</p>` : ""}
       ${reads.length ? `<p class="hint">Read ${reads.length} ${reads.length === 1 ? "time" : "times"}. Last on ${esc(niceDate(reads[0].d))}${reads[0].k ? " with " + esc(reads[0].k) : ""}.</p>` : `<p class="hint">Not in the reading log yet.</p>`}
     </div>`;
@@ -423,7 +425,7 @@ function detailSheet(m) {
           ${it.author ? `<dt>Author</dt><dd>${esc(it.author)}</dd>` : ""}
           ${it.isbn ? `<dt>ISBN</dt><dd style="font-variant-numeric:tabular-nums">${esc(it.isbn)}</dd>` : ""}
           ${it.ages ? `<dt>Ages</dt><dd>${esc(it.ages)}</dd>` : ""}
-          ${it.forKid ? `<dt>For</dt><dd>${esc(it.forKid)}</dd>` : ""}
+          ${it.forKid && multiKids() ? `<dt>For</dt><dd>${esc(it.forKid)}</dd>` : ""}
           ${it.list === "pass" ? `<dt>Plan</dt><dd>${esc(it.passPlan || "Undecided")}</dd>` : ""}
           ${it.note ? `<dt>Notes</dt><dd>${esc(it.note)}</dd>` : ""}
         </dl>
@@ -459,10 +461,10 @@ function editSheet(m) {
       ${book ? `<div class="field"><label for="f-author">Author</label><input id="f-author" value="${esc(it.author || "")}"></div>` : ""}
       <div class="field"><span class="lbl">Ages</span><div class="seg">${AGES.map((a) => `<button type="button" class="chip" data-fage="${esc(a)}" aria-pressed="${it.ages === a}">${esc(a)}</button>`).join("")}</div></div>
       <div class="field"><span class="lbl">Tags</span><div class="seg">${TAGS.map((t) => `<button type="button" class="chip" data-ftag="${esc(t)}" aria-pressed="${(it.tags || []).includes(t)}">${esc(t)}</button>`).join("")}</div></div>
-      <div class="field"><span class="lbl">For which child</span><div class="seg">
+      ${multiKids() ? `<div class="field"><span class="lbl">For which child</span><div class="seg">
         <button type="button" class="chip" data-fkid="" aria-pressed="${!it.forKid}">Everyone</button>
         ${kids.concat(otherKids).map((k) => `<button type="button" class="chip kidchip" data-fkid="${esc(k)}" aria-pressed="${it.forKid === k}">${kidByName(k) ? animalSvg(kidByName(k).animal, kidByName(k).color, 20) : ""} ${esc(k)}</button>`).join("")}
-      </div>${kids.length ? "" : `<span class="hint">Add your children with “Add a child” to pick them here.</span>`}</div>
+      </div></div>` : ""}
       ${it.list === "wish" ? `<div class="field"><label for="f-link">Shop link</label><input id="f-link" type="url" value="${esc(it.link || "")}" placeholder="Paste an Amazon or other store link"><span class="hint">Leave it blank and family get a “Find on Amazon” search instead.</span></div>` : ""}
       <div class="field"><label for="f-note">Notes</label><textarea id="f-note" rows="2" placeholder="${it.list === "wish" ? "Size, color, edition…" : "Who gave it, a favorite page…"}">${esc(it.note || "")}</textarea></div>
       <div class="foot">
@@ -557,6 +559,7 @@ function render() {
       <main>${view}</main>
       <footer class="foot-note">
         <span>${S.canEdit ? "Send family this page's link so they can browse and claim wish-list gifts. They don't need an account." : "Made with love for the little readers and players in this family."}</span>
+        ${S.canEdit && !multiKids() ? `<button class="linkish" data-act="add-kid">Add a child</button>` : ""}
         ${S.session ? `<button class="linkish" data-act="signout">Sign out${S.session.user && S.session.user.email ? " (" + esc(S.session.user.email) + ")" : ""}</button>` : `<button class="linkish" data-act="signin">Admin sign in</button>`}
       </footer>
     </div>
@@ -828,7 +831,7 @@ document.addEventListener("submit", async (e) => {
       S.lib.kids = S.lib.kids.map((x) => (x.name === m.orig ? k : x));
       if (k.name !== m.orig) S.lib.items.forEach((i) => { if (i.forKid === m.orig) i.forKid = k.name; (i.reads || []).forEach((r) => { if (r.k === m.orig) r.k = k.name; }); });
     }
-    S.kid = k.name; try { localStorage.setItem("ss-kid", S.kid); } catch (_) {}
+    S.kid = multiKids() ? k.name : ""; try { localStorage.setItem("ss-kid", S.kid); } catch (_) {}
     S.modal = null; changed();
   } else if (e.target.id === "authform") {
     const email = $("#a-email").value.trim(), password = $("#a-pass").value;
