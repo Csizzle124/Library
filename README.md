@@ -8,6 +8,6 @@ One list of Freddie's books and toys, with some marked as wishes that family can
   [`supabase/schema.sql`](supabase/schema.sql).
 - **Who can do what:** anyone with the link can view the list and claim a wish. Only the admin,
   signed in with an email listed in the `editors` table, can add, edit or remove things.
-- **ISBN autofill:** typing (or, on Android Chrome, scanning) a book's ISBN fills in the title,
+- **ISBN autofill:** typing or scanning (with any phone's camera) a book's ISBN fills in the title,
   author and cover from [Open Library](https://openlibrary.org/developers/api).
 - **Run it locally:** `python3 -m http.server` in this folder, then open http://localhost:8000.

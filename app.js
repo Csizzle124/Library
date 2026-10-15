@@ -108,13 +108,25 @@ async function runLookup() {
   }
   render();
 }
+// Uses the phone's built-in barcode reader where there is one (Android Chrome) and a
+// downloadable one everywhere else (iPhone, Firefox, desktop), loaded only when needed.
+const canScan = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+async function barcodeReader() {
+  const formats = ["ean_13", "upc_a"];
+  if ("BarcodeDetector" in window) {
+    const ok = await BarcodeDetector.getSupportedFormats().catch(() => []);
+    if (ok.includes("ean_13")) return new BarcodeDetector({ formats });
+  }
+  const { BarcodeDetector: Fallback } = await import("https://cdn.jsdelivr.net/npm/barcode-detector@3.2.2/pure/+esm");
+  return new Fallback({ formats });
+}
 async function scanBarcode() {
-  if (!("BarcodeDetector" in window)) return;
+  if (!canScan) return;
   S.modal.scanning = true; render();
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    const det = new BarcodeDetector({ formats: ["ean_13", "upc_a"] });
+    const det = await barcodeReader();
     const until = Date.now() + 30000;
     while (S.modal && S.modal.scanning && Date.now() < until) {
       // A re-render swaps the video element, so reattach the camera when that happens.
@@ -125,8 +137,9 @@ async function scanBarcode() {
       if (hit) { keepForm(); S.modal.item.isbn = hit; S.modal.scanning = false; render(); stream.getTracks().forEach((t) => t.stop()); return runLookup(); }
       await new Promise((r) => setTimeout(r, 250));
     }
+    if (S.modal && S.modal.scanning) S.modal.lookup = "Didn't catch a barcode. Try again with more light, or type the ISBN.";
   } catch (_) {
-    if (S.modal) S.modal.lookup = "The camera couldn't start. Type the ISBN instead.";
+    if (S.modal) S.modal.lookup = stream ? "The barcode reader couldn't load. Type the ISBN instead." : "The camera couldn't start. Allow camera access, or type the ISBN instead.";
   }
   if (stream) stream.getTracks().forEach((t) => t.stop());
   if (S.modal) { S.modal.scanning = false; render(); }
@@ -189,8 +202,8 @@ function editSheet(m) {
       ${book ? `<div class="field"><label for="f-isbn">ISBN</label>
         <div class="isbn-row"><input id="f-isbn" inputmode="numeric" autocomplete="off" value="${esc(it.isbn || "")}" placeholder="By the barcode, e.g. 9780064430173">
         <button type="button" class="btn gold" data-act="isbn-lookup">Fill in</button>
-        ${"BarcodeDetector" in window ? `<button type="button" class="btn" data-act="isbn-scan">Scan</button>` : ""}</div>
-        ${m.scanning ? `<div class="scan"><video id="scan-video" playsinline muted></video><button type="button" class="btn small" data-act="scan-stop">Stop scanning</button></div>` : ""}
+        ${canScan ? `<button type="button" class="btn" data-act="isbn-scan">Scan</button>` : ""}</div>
+        ${m.scanning ? `<div class="scan"><video id="scan-video" playsinline muted autoplay></video><span class="hint">Point the camera at the barcode on the back.</span><button type="button" class="btn small" data-act="scan-stop">Stop scanning</button></div>` : ""}
         <span class="hint" aria-live="polite">${esc(m.lookup || "Type the ISBN and tap Fill in to get the title, author and cover.")}</span></div>` : ""}
       <div class="field"><label for="f-title">${book ? "Title" : "Name"}</label><input id="f-title" required maxlength="200" value="${esc(it.title || "")}"></div>
       ${book ? `<div class="field"><label for="f-author">Author</label><input id="f-author" maxlength="200" value="${esc(it.author || "")}"></div>` : ""}
