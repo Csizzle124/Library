@@ -207,7 +207,7 @@ function filtersHtml(placeholder, withTags = true, canSelect = false) {
   return `<div class="filters">
     <div class="filter-top">
       <input class="search" id="q" type="search" placeholder="${esc(placeholder)}" value="${esc(S.q)}" aria-label="Search">
-      ${canSelect && S.canEdit ? `<button class="btn small" data-act="select" aria-pressed="${!!S.sel}">${S.sel ? "Done" : "Set ages"}</button>` : ""}
+      ${canSelect && S.canEdit ? `<button class="btn small" data-act="select" aria-pressed="${!!S.sel}">${S.sel ? "Done" : "Select"}</button>` : ""}
     </div>
     <div class="chips" role="group" aria-label="Filter">
       ${on ? `<button class="chip clear" data-act="clear-filters" aria-label="Clear filters">✕ Clear</button>` : ""}
@@ -224,10 +224,11 @@ function selectBar() {
   if (!S.sel) return "";
   const n = S.sel.size, what = S.tab === "toys" ? "toy" : "book";
   return `<div class="selbar" role="region" aria-label="Set ages">
-    <div class="selbar-top"><b>${n ? `Set ${n} ${what}${n > 1 ? "s" : ""} to:` : `Tap the ${what}s to change`}</b>
+    <div class="selbar-top"><b>${n ? `${n} ${what}${n > 1 ? "s" : ""}: set age` : `Tap the ${what}s to change`}</b>
       <button class="btn small ghost" data-act="select-all">Select all</button>
       <button class="btn small primary" data-act="select">Done</button></div>
-    ${n ? `<div class="selbar-ages">${AGES.map((a) => `<button class="chip" data-setage="${esc(a)}">${esc(a)}</button>`).join("")}<button class="chip" data-setage="">No age</button></div>` : ""}
+    ${n ? `<div class="selbar-ages">${AGES.map((a) => `<button class="chip" data-setage="${esc(a)}">${esc(a)}</button>`).join("")}<button class="chip" data-setage="">No age</button></div>
+      ${what === "book" ? `<select id="sel-shelf" class="sel-shelf" aria-label="Add to a shelf"><option value="">Add ${n > 1 ? "them" : "it"} to a shelf…</option>${shelfList().map((s) => `<option>${esc(s)}</option>`).join("")}</select>` : ""}` : ""}
   </div>`;
 }
 function examplesNotice() {
@@ -286,7 +287,7 @@ function booksView() {
           <p class="eyebrow">Deep in the whispering woods…</p>
           <h2>The Story Grove</h2>
           <p class="sub">${count("book", "own")} ${count("book", "own") === 1 ? "book" : "books"} in the grove${S.kid ? " for " + esc(S.kid) : ""}. Tap a cover to open it.</p>
-          <div class="hero-acts"><button class="btn gold" data-act="pick-story">Pick tonight's story</button></div>
+          <div class="hero-acts"><button class="btn gold" data-act="pick-story">Pick tonight's story</button>${S.canEdit ? `<button class="btn" data-act="shelves">Edit shelves</button>` : ""}</div>
         </div>
         <svg class="moon" viewBox="0 0 100 100" aria-hidden="true">
           <defs><radialGradient id="mg" cx="40%" cy="35%"><stop offset="0" stop-color="#fdfbe6"/><stop offset="1" stop-color="#e9e39a"/></radialGradient>
@@ -312,11 +313,15 @@ function bookCard(it) {
     ${tagsHtml(it)}
   </button>`;
 }
-// One shelf per theme, biggest first, each scrolling sideways. Books without a theme yet sit in "More stories".
+// One row per shelf, biggest first, each scrolling sideways. A book on two shelves shows on both;
+// books on no shelf sit in "More stories".
 function themeShelves(items) {
-  const groups = {};
-  for (const it of items) (groups[it.theme && THEME_NAMES.includes(it.theme) ? it.theme : OTHER] ||= []).push(it);
-  const names = Object.keys(groups).sort((a, b) => (a === OTHER) - (b === OTHER) || groups[b].length - groups[a].length || THEME_NAMES.indexOf(a) - THEME_NAMES.indexOf(b));
+  const groups = {}, list = shelfList();
+  for (const it of items) {
+    const on = shelvesOf(it).filter((n) => list.includes(n));
+    for (const n of on.length ? on : [OTHER]) (groups[n] ||= []).push(it);
+  }
+  const names = Object.keys(groups).sort((a, b) => (a === OTHER) - (b === OTHER) || groups[b].length - groups[a].length || list.indexOf(a) - list.indexOf(b));
   if (names.length === 1) return `<div class="shelf">${items.map(bookCard).join("")}</div>`;
   return names.map((n) => `<h3 class="group theme-h">${esc(n)} <span class="n">${groups[n].length}</span></h3>
     <div class="shelf shelf-row">${groups[n].map(bookCard).join("")}</div>`).join("");
@@ -497,9 +502,9 @@ function editSheet(m) {
         <span class="hint" aria-live="polite">${esc(m.lookup || "Type the ISBN and tap Fill in to get the title, author and cover.")}</span></div>` : ""}
       <div class="field"><label for="f-title">${book ? "Title" : "Name"}</label><input id="f-title" required value="${esc(it.title || "")}"></div>
       ${book ? `<div class="field"><label for="f-author">Author</label><input id="f-author" value="${esc(it.author || "")}"></div>` : ""}
-      ${book && it.list === "own" ? `<div class="field"><label for="f-theme">Shelf</label><select id="f-theme">
-        <option value="">Pick one for me</option>
-        ${THEME_NAMES.map((n) => `<option ${it.theme === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>` : ""}
+      ${book && it.list === "own" ? `<div class="field"><span class="lbl">Shelves <span class="hint">(tap all that fit)</span></span><div class="seg">
+        ${shelfList().map((n) => `<button type="button" class="chip" data-fshelf="${esc(n)}" aria-pressed="${shelvesOf(it).includes(n)}">${esc(n)}</button>`).join("")}
+        <button type="button" class="chip ghost-chip" data-act="shelves">Edit shelves</button></div></div>` : ""}
       <div class="field"><span class="lbl">Ages</span><div class="seg">${AGES.map((a) => `<button type="button" class="chip" data-fage="${esc(a)}" aria-pressed="${it.ages === a}">${esc(a)}</button>`).join("")}</div></div>
       <div class="field"><span class="lbl">Tags</span><div class="seg">${TAGS.map((t) => `<button type="button" class="chip" data-ftag="${esc(t)}" aria-pressed="${(it.tags || []).includes(t)}">${esc(t)}</button>`).join("")}</div></div>
       ${multiKids() ? `<div class="field"><span class="lbl">For which child</span><div class="seg">
@@ -585,7 +590,7 @@ function render() {
   const tabs = [["books", "Books", count("book", "own")], ["toys", "Toys", count("toy", "own")], ["wishlist", "Wishes", count(null, "wish")], ["pass", "Pass-Along", count(null, "pass")]];
   const view = S.tab === "books" ? booksView() : S.tab === "toys" ? toysView() : S.tab === "wishlist" ? wishView() : passView();
   let sheet = "";
-  if (S.modal) sheet = S.modal.type === "detail" ? detailSheet(S.modal) : S.modal.type === "edit" ? editSheet(S.modal) : S.modal.type === "kid" ? kidSheet(S.modal) : S.modal.type === "story" ? storySheet(S.modal) : S.modal.type === "auth" ? authSheet(S.modal) : S.modal.type === "quick" ? quickSheet() : S.modal.type === "bulk" ? bulkSheet(S.modal) : renameSheet();
+  if (S.modal) sheet = S.modal.type === "detail" ? detailSheet(S.modal) : S.modal.type === "edit" ? editSheet(S.modal) : S.modal.type === "kid" ? kidSheet(S.modal) : S.modal.type === "story" ? storySheet(S.modal) : S.modal.type === "auth" ? authSheet(S.modal) : S.modal.type === "quick" ? quickSheet() : S.modal.type === "bulk" ? bulkSheet(S.modal) : S.modal.type === "shelves" ? shelvesSheet(S.modal) : renameSheet();
   $("#root").innerHTML = `
     <div class="wrap">
       <header class="top">
@@ -660,6 +665,22 @@ function authSheet(m) {
         <button type="submit" class="btn primary">${up ? "Create account" : "Sign in"}</button>
       </div>
     </form></div></div>`;
+}
+function shelvesSheet(m) {
+  const list = shelfList();
+  const count = (n) => S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && shelvesOf(i).includes(n)).length;
+  const row = (n, i) => m.editing === i
+    ? `<form class="shelf-edit" data-shelfform="${i}"><input id="sh-name" required maxlength="40" value="${esc(n)}" aria-label="Shelf name"><button class="btn small primary" type="submit">Save</button><button class="btn small ghost" type="button" data-act="shelf-cancel">Cancel</button></form>`
+    : m.removing === i
+    ? `<div class="shelf-li"><span><b>Remove ${esc(n)}?</b><span class="hint">Its books stay in the library.</span></span><button class="btn small primary" data-shelfrm-yes="${i}">Remove</button><button class="btn small ghost" data-act="shelf-cancel">Keep</button></div>`
+    : `<div class="shelf-li"><span>${esc(n)} <span class="hint">${count(n)} ${count(n) === 1 ? "book" : "books"}</span></span><button class="btn small ghost" data-shelfedit="${i}">Rename</button><button class="btn small ghost" data-shelfrm="${i}">Remove</button></div>`;
+  return `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sht">
+    <header><h3 id="sht">Shelves</h3><button class="btn small ghost" data-act="${m.back ? "shelves-back" : "close"}">Done</button></header>
+    <div class="content">
+      <div class="shelf-ul">${list.map(row).join("")}</div>
+      <form class="shelf-edit" id="shelfadd"><input id="sh-new" required maxlength="40" placeholder="New shelf, like Trucks or Grandma's picks" aria-label="New shelf name"><button class="btn small primary" type="submit">Add</button></form>
+      <p class="hint" style="margin:0">Books on no shelf show under “${OTHER}”. To put a book on a shelf, open it and tap Edit, or use Set ages to pick several.</p>
+    </div></div></div>`;
 }
 function renameSheet() {
   return `<div class="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="rt">
@@ -828,10 +849,26 @@ const THEMES = [
   ["Funny stories", /\b(humou?r|humorous|funny|jokes|silly)\b/]
 ];
 const THEME_NAMES = [...THEMES.map((t) => t[0]), OTHER];
+// The owner can add, rename and remove shelves; until they do, the built-in list is used.
+// "More stories" always stays as the home for books on no other shelf.
+const shelfList = () => (Array.isArray(S.lib.shelves) ? S.lib.shelves : THEME_NAMES.filter((n) => n !== OTHER));
+// A book can sit on several shelves. Older books saved one theme; read those as a list of one.
+const shelvesOf = (it) => (Array.isArray(it.themes) ? it.themes : it.theme ? [it.theme] : []);
+function setShelves(it, list) { it.themes = [...new Set(list)]; delete it.theme; }
+function renameShelf(from, to) {
+  S.lib.shelves = shelfList().map((n) => (n === from ? to : n));
+  S.lib.items.forEach((i) => { const t = shelvesOf(i); if (t.includes(from)) setShelves(i, t.map((n) => (n === from ? to : n))); });
+}
+function removeShelf(name) {
+  S.lib.shelves = shelfList().filter((n) => n !== name);
+  S.lib.items.forEach((i) => { const t = shelvesOf(i); if (t.includes(name)) setShelves(i, t.filter((n) => n !== name)); });
+}
 function themeFor(subjects) {
   let best = OTHER, most = 0;
   const subs = subjects.map((x) => String(x).toLowerCase());
+  const have = shelfList();
   for (const [name, re] of THEMES) {
+    if (!have.includes(name)) continue;
     const n = subs.filter((x) => re.test(x)).length;
     if (n > most) { best = name; most = n; }
   }
@@ -852,13 +889,13 @@ async function subjectsFor(it) {
 let theming = false;
 async function fillThemes() {
   if (theming || !S.canEdit) return;
-  const todo = S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && !i.theme && i.title);
+  const todo = S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && !i.theme && !i.themes && i.title);
   if (!todo.length) return;
   theming = true;
   let got = 0;
   const one = async () => {
     for (let it; (it = todo.shift()); ) {
-      try { it.theme = themeFor(await subjectsFor(it)); got++; } catch (_) { /* try again next visit */ }
+      try { const t = themeFor(await subjectsFor(it)); setShelves(it, t === OTHER ? [] : [t]); got++; } catch (_) { /* try again next visit */ }
     }
   };
   await Promise.all([one(), one(), one()]);
@@ -977,6 +1014,14 @@ document.addEventListener("click", async (e) => {
     S.sel = new Set(); changed(); return;
   }
   if (d.edit) { const it = findItem(d.edit); S.modal = { type: "edit", item: JSON.parse(JSON.stringify(it)), isNew: false }; render(); return; }
+  if (d.shelfedit !== undefined) { S.modal.editing = +d.shelfedit; S.modal.removing = null; render(); $("#sh-name") && $("#sh-name").focus(); return; }
+  if (d.shelfrm !== undefined) { S.modal.removing = +d.shelfrm; S.modal.editing = null; render(); return; }
+  if (d.shelfrmYes !== undefined) {
+    const n = shelfList()[+d.shelfrmYes]; removeShelf(n);
+    if (S.modal.back) setShelves(S.modal.back.item, shelvesOf(S.modal.back.item).filter((x) => x !== n));
+    S.modal.removing = null; changed(); return;
+  }
+  if (d.fshelf !== undefined) { keepForm(); const t = shelvesOf(S.modal.item); setShelves(S.modal.item, t.includes(d.fshelf) ? t.filter((n) => n !== d.fshelf) : [...t, d.fshelf]); render(); return; }
   if (d.fage !== undefined) { keepForm(); S.modal.item.ages = S.modal.item.ages === d.fage ? "" : d.fage; render(); return; }
   if (d.ftag) { keepForm(); const tg = S.modal.item.tags || (S.modal.item.tags = []); const i = tg.indexOf(d.ftag); i < 0 ? tg.push(d.ftag) : tg.splice(i, 1); render(); return; }
   if (d.fkid !== undefined) { keepForm(); S.modal.item.forKid = d.fkid; render(); return; }
@@ -997,6 +1042,9 @@ document.addEventListener("click", async (e) => {
     case "signout": await sb.auth.signOut(); S.modal = null; break;
     case "share": shareLink(); break;
     case "quick": S.modal = { type: "quick" }; render(); break;
+    case "shelves": if (S.modal && S.modal.type === "edit") keepForm(); S.modal = { type: "shelves", back: S.modal && S.modal.type === "edit" ? S.modal : null }; render(); break;
+    case "shelves-back": { const b = S.modal.back; S.modal = b; render(); break; }
+    case "shelf-cancel": S.modal.editing = S.modal.removing = null; render(); break;
     case "select": S.sel = S.sel ? null : new Set(); render(); break;
     case "select-all": (S.tab === "toys" ? filtered("toy", "own") : filtered("book", "own")).forEach((i) => S.sel.add(i.id)); render(); break;
     case "clear-filters": S.age = ""; S.tag = ""; render(); break;
@@ -1040,9 +1088,13 @@ function keepForm() {
   const it = S.modal && S.modal.item; if (!it || S.modal.type !== "edit") return;
   const v = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : undefined; };
   for (const [k, id] of [["title", "f-title"], ["author", "f-author"], ["isbn", "f-isbn"], ["link", "f-link"], ["note", "f-note"]]) { const x = v(id); if (x !== undefined) it[k] = x; }
-  const th = v("f-theme"); if (th !== undefined) { if (th) it.theme = th; else delete it.theme; }
 }
 document.addEventListener("change", async (e) => {
+  if (e.target.id === "sel-shelf" && e.target.value && S.sel) {
+    const n = e.target.value;
+    S.lib.items.forEach((i) => { if (S.sel.has(i.id)) setShelves(i, [...shelvesOf(i), n]); });
+    S.sel = new Set(); changed(); return;
+  }
   if (e.target.dataset.bpick !== undefined) { const f = S.modal.found[+e.target.dataset.bpick]; if (f) { f.on = e.target.checked; render(); } return; }
   if (e.target.id === "f-photo" && e.target.files[0]) {
     keepForm();
@@ -1088,6 +1140,18 @@ document.addEventListener("submit", async (e) => {
     if (S.modal.mode === "up" && !data.session) { S.modal.msg = "Check your email for a confirmation link, then come back and sign in."; S.modal.mode = "in"; render(); return; }
     S.modal = null; await refreshAuth();
     if (!S.canEdit) { S.saveErr = "You're signed in, but this account isn't set up to edit the library."; render(); }
+  } else if (e.target.dataset.shelfform !== undefined) {
+    const from = shelfList()[+e.target.dataset.shelfform], to = $("#sh-name").value.trim();
+    if (!to || to === OTHER || (to !== from && shelfList().includes(to))) return;
+    renameShelf(from, to);
+    const back = S.modal.back; if (back) setShelves(back.item, shelvesOf(back.item).map((x) => (x === from ? to : x)));
+    S.modal.editing = null; changed();
+  } else if (e.target.id === "shelfadd") {
+    const n = $("#sh-new").value.trim();
+    if (!n || n === OTHER || shelfList().includes(n)) return;
+    S.lib.shelves = [...shelfList(), n];
+    const back = S.modal.back; if (back) setShelves(back.item, [...shelvesOf(back.item), n]);
+    changed();
   } else if (e.target.id === "renameform") {
     const n = $("#f-name").value.trim(); if (n) { S.lib.name = n; S.modal = null; changed(); }
   } else if (e.target.dataset.claimform) {
