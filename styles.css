@@ -82,7 +82,7 @@ button { cursor: pointer; }
 .empty { text-align: center; padding: 40px 16px; color: var(--muted); }
 
 /* ===== Books: the moonlit grove ===== */
-.night { position: relative; overflow: hidden; border-radius: 22px; background: radial-gradient(60% 50% at 82% 8%, rgb(240 221 140 / .22), transparent 70%), radial-gradient(120% 70% at 20% 100%, var(--night-3), transparent 60%), linear-gradient(180deg, var(--night-1), var(--night-2)); color: #f1f6ea; color-scheme: dark; }
+.night { position: relative; overflow: hidden; overflow: clip; border-radius: 22px; background: radial-gradient(60% 50% at 82% 8%, rgb(240 221 140 / .22), transparent 70%), radial-gradient(120% 70% at 20% 100%, var(--night-3), transparent 60%), linear-gradient(180deg, var(--night-1), var(--night-2)); color: #f1f6ea; color-scheme: dark; }
 .treeline { position: absolute; left: 0; right: 0; top: 0; height: 230px; width: 100%; pointer-events: none; }
 .night canvas.stars { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .night .inner { position: relative; padding: 28px clamp(16px, 4vw, 40px) 30px; }
@@ -364,4 +364,70 @@ body:has(.selbar) .wrap { padding-bottom: 200px; }
   .sheet { width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; padding-bottom: env(safe-area-inset-bottom, 0px); animation: slideup .28s cubic-bezier(.2,.8,.2,1); }
   .sheet header { position: sticky; top: 0; background: var(--paper); z-index: 1; padding-top: 10px; }
   .sheet header::before { content: ""; position: absolute; top: 6px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 4px; background: var(--line); }
+}
+
+/* Filter bar sticks to the top while scrolling; once stuck it folds to just the search row */
+.stick-mark { height: 1px; margin-bottom: -1px; }
+.filters { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; margin-inline: -16px; padding-inline: 16px; background: var(--bg); transition: box-shadow .2s; }
+.filters.stuck { padding-block: 10px; box-shadow: 0 8px 18px rgb(20 40 25 / .12); border-radius: 0 0 16px 16px; }
+.filters.stuck .chips { display: none; }
+.night .filters { margin-inline: calc(-1 * clamp(16px, 4vw, 40px)); padding-inline: clamp(16px, 4vw, 40px); background: transparent; }
+.night .filters.stuck { background: rgb(9 26 17 / .94); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 10px 22px rgb(0 0 0 / .35); }
+.night h3.theme-h { scroll-margin-top: calc(84px + env(safe-area-inset-top, 0px)); }
+.jump { flex: 0 1 auto; width: 96px; border: 1px solid var(--line); background: var(--paper); color: inherit; border-radius: 12px; padding: 9px 10px; font: inherit; font-weight: 700; font-size: .86rem; }
+.night .jump { background: rgb(255 255 255 / .1); border-color: rgb(255 255 255 / .22); color: #fff; }
+.jump option, .sortsel option { color: #1d2a20; background: #fff; }
+.sortsel { flex: none; -webkit-appearance: none; appearance: none; padding-right: 28px; color: inherit; font: inherit; font-weight: 700; font-size: .84rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6' fill='none' stroke='%23889' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; background-size: 13px; }
+.night .chips .sortsel { color: #eef4e8; }
+
+/* Long titles stop at two lines on the cards; the full title is in the book's pop-up */
+.book .bt { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.book .ba { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.made .t { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Reading log folds to one line */
+.log { display: block; padding: 0; }
+.log > * { margin: 0 16px 12px; }
+.log > .log-sum { margin: 0; }
+.log-sum { list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; }
+.log-sum::-webkit-details-marker { display: none; }
+.log-line { flex: 1; min-width: 0; color: #e9f0e4; font-weight: 700; font-size: .88rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chev { flex: none; transition: transform .2s; color: #f0dd8c; }
+details[open] > summary .chev { transform: rotate(180deg); }
+.log-last { margin-top: -4px !important; }
+
+/* Saved for later */
+.later { margin-top: 30px; border: 1px dashed rgb(240 221 140 / .45); border-radius: 16px; background: rgb(8 22 14 / .45); }
+.later summary { list-style: none; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; padding: 14px 16px; cursor: pointer; }
+.later summary::-webkit-details-marker { display: none; }
+.later-t { font-family: var(--f-story); font-weight: 700; font-size: 1.25rem; color: #f0dd8c; }
+.later-t .n { font-family: var(--f-body); font-size: .75rem; background: rgb(255 255 255 / .12); color: #e9f0e4; border-radius: 999px; padding: 1px 8px; vertical-align: 3px; }
+.later-s { grid-column: 1; font-size: .82rem; color: #c4d3bf; }
+.later .chev { grid-column: 2; grid-row: 1 / span 2; }
+.later .shelf-row { padding: 4px 16px 16px; margin: 0; opacity: .92; }
+.selbar-later { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+
+/* Duplicate warning and a tidier claim box */
+.notice.dup { border-style: solid; border-color: var(--berry); }
+.claimform input { flex: 1 1 100%; }
+
+@media (max-width: 700px) {
+  /* A slimmer header, so the books start higher up */
+  .top { flex-wrap: nowrap; padding-block: 10px 6px; gap: 10px; }
+  .brand svg { width: 36px; height: 36px; }
+  .brand h1 { font-size: 1.3rem; }
+  .brand p, .tools .pill:not(.err):not(.ok) { display: none; }
+  .share-b span { display: none; }
+  .share-b { min-width: 44px; }
+  .night .inner { padding-top: 20px; }
+  .hero h2 { font-size: 1.9rem; }
+  .hero-acts { margin-top: 10px; }
+  .log { margin-top: 14px; }
+  .search { flex-basis: 120px; }
+
+  /* The book pop-up puts a small cover beside the title, so "We read this tonight" is near the top */
+  .detail { grid-template-columns: 92px 1fr; gap: 14px; }
+  .detail .art { max-width: none; }
+  .detail h4 { font-size: 1.25rem; }
+  .sheet { will-change: transform; }
 }
