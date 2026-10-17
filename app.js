@@ -36,11 +36,13 @@ const S = {
   lib: null, tab: "books", q: "", age: "", tag: "", kid: "",
   canEdit: false, session: null, loadErr: "",
   claims: {}, showClaimers: false, saving: "", saveErr: "",
-  modal: null, claimOpen: null, rotateMsg: "", myName: "", sel: null
+  modal: null, claimOpen: null, rotateMsg: "", myName: "", sel: null,
+  sort: "", logOpen: false, laterOpen: false, stuck: false
 };
 const TABS = ["books", "toys", "wishlist", "pass"];
 try { S.myName = localStorage.getItem("fl-name") || ""; } catch (e) {}
 try { const t = localStorage.getItem("ss-tab"); if (TABS.includes(t)) S.tab = t; const k = localStorage.getItem("ss-kid"); if (k) S.kid = k; } catch (e) {}
+try { S.sort = localStorage.getItem("fl-sort") || ""; S.logOpen = localStorage.getItem("fl-log") === "1"; } catch (e) {}
 const h = location.hash.replace("#", "");
 if (TABS.includes(h)) S.tab = h;
 
@@ -175,7 +177,15 @@ function filtered(kind, list, extra) {
     (kind ? it.kind === kind : true) && it.list === list && matchesKid(it) && (!extra || extra(it)) &&
     (!S.age || it.ages === S.age) && (!S.tag || (it.tags || []).includes(S.tag)) &&
     (!q || [it.title, it.author, it.note, it.forKid, it.passPlan, ...(it.tags || [])].join(" ").toLowerCase().includes(q))
-  ).sort((a, b) => (b.tags || []).includes("Favorite") - (a.tags || []).includes("Favorite") || String(a.title).localeCompare(String(b.title)));
+  ).sort(sorter());
+}
+// "A to Z" keeps favorites first. Older items have no added date, so their place in the list stands in for it.
+const SORTS = [["", "A to Z"], ["new", "Newest first"], ["read", "Most read"]];
+function sorter() {
+  const az = (a, b) => String(a.title).localeCompare(String(b.title));
+  if (S.sort === "new") { const at = new Map(S.lib.items.map((it, i) => [it.id, it.added || i])); return (a, b) => at.get(b.id) - at.get(a.id) || az(a, b); }
+  if (S.sort === "read") return (a, b) => (b.reads || []).length - (a.reads || []).length || az(a, b);
+  return (a, b) => (b.tags || []).includes("Favorite") - (a.tags || []).includes("Favorite") || az(a, b);
 }
 const count = (kind, list) => S.lib.items.filter((i) => (kind ? i.kind === kind : true) && i.list === list && matchesKid(i)).length;
 
@@ -186,11 +196,12 @@ function madeCover(it) {
   return `<div class="made" style="background:radial-gradient(120% 70% at 50% 0%, rgb(255 255 255 / .14), transparent 60%), ${bg}">
     ${leafSvg(20)}<span class="t">${esc(it.title)}</span><span class="a">${esc(it.author || "")}</span></div>`;
 }
-function bookArt(it) { return it.photo ? `<img src="${esc(it.photo)}" alt="">` : madeCover(it); }
+const img = (src) => `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">`;
+function bookArt(it) { return it.photo ? img(it.photo) : madeCover(it); }
 function toyBlock(it) {
   const c = TOYCOLORS[hash(it.title) % TOYCOLORS.length];
   const letter = (String(it.title).trim()[0] || "?").toUpperCase();
-  return `<div class="ph" style="background:${c}">${it.photo ? `<img src="${esc(it.photo)}" alt="">` : `<span class="block">${esc(letter)}</span>`}</div>`;
+  return `<div class="ph" style="background:${c}">${it.photo ? img(it.photo) : `<span class="block">${esc(letter)}</span>`}</div>`;
 }
 function tagsHtml(it) {
   const t = (it.tags || []).map((x) => `<span class="tag${x === "Favorite" ? " fav" : ""}">${esc(x)}</span>`);
@@ -200,17 +211,20 @@ function tagsHtml(it) {
   if (it.example) t.push(`<span class="tag ex">Example</span>`);
   return `<div class="meta">${t.join("")}</div>`;
 }
-// Two rows at most: the search box (plus "Set ages" for the owner), then one row of chips
-// that scrolls sideways on a phone.
-function filtersHtml(placeholder, withTags = true, canSelect = false) {
+// Two rows at most: the search box (plus a shelf jump and "Select" for the owner), then one row
+// of chips that scrolls sideways on a phone. The bar sticks to the top while scrolling, and once
+// it's stuck only the search row stays, so it doesn't cover the books.
+function filtersHtml(placeholder, withTags = true, canSelect = false, { sorts = null, jump = null } = {}) {
   const on = S.age || S.tag;
-  return `<div class="filters">
+  return `<div class="stick-mark" aria-hidden="true"></div><div class="filters${S.stuck ? " stuck" : ""}">
     <div class="filter-top">
       <input class="search" id="q" type="search" placeholder="${esc(placeholder)}" value="${esc(S.q)}" aria-label="Search">
+      ${jump && jump.length > 1 ? `<select id="jump" class="jump" aria-label="Jump to a shelf"><option value="">Shelves</option>${jump.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("")}</select>` : ""}
       ${canSelect && S.canEdit ? `<button class="btn small" data-act="select" aria-pressed="${!!S.sel}">${S.sel ? "Done" : "Select"}</button>` : ""}
     </div>
     <div class="chips" role="group" aria-label="Filter">
       ${on ? `<button class="chip clear" data-act="clear-filters" aria-label="Clear filters">✕ Clear</button>` : ""}
+      ${sorts ? `<select id="sort" class="chip sortsel" aria-label="Sort">${SORTS.filter(([k]) => sorts.includes(k)).map(([k, l]) => `<option value="${k}"${S.sort === k ? " selected" : ""}>${l}</option>`).join("")}</select>` : ""}
       <span class="chip-lbl">Ages</span>
       ${AGES.map((a) => `<button class="chip" data-age="${esc(a)}" aria-pressed="${S.age === a}">${esc(a)}</button>`).join("")}
       ${withTags ? `<span class="chip-sep" aria-hidden="true"></span>` + TAGS.map((t) => `<button class="chip" data-tag="${esc(t)}" aria-pressed="${S.tag === t}">${esc(t)}</button>`).join("") : ""}
@@ -224,11 +238,12 @@ function selectBar() {
   if (!S.sel) return "";
   const n = S.sel.size, what = S.tab === "toys" ? "toy" : "book";
   return `<div class="selbar" role="region" aria-label="Set ages">
-    <div class="selbar-top"><b>${n ? `${n} ${what}${n > 1 ? "s" : ""}: set age` : `Tap the ${what}s to change`}</b>
+    <div class="selbar-top"><b>${n ? `${n} ${what}${n > 1 ? "s" : ""} picked` : `Tap the ${what}s to change`}</b>
       <button class="btn small ghost" data-act="select-all">Select all</button>
       <button class="btn small primary" data-act="select">Done</button></div>
     ${n ? `<div class="selbar-ages">${AGES.map((a) => `<button class="chip" data-setage="${esc(a)}">${esc(a)}</button>`).join("")}<button class="chip" data-setage="">No age</button></div>
-      ${what === "book" ? `<select id="sel-shelf" class="sel-shelf" aria-label="Add to a shelf"><option value="">Add ${n > 1 ? "them" : "it"} to a shelf…</option>${shelfList().map((s) => `<option>${esc(s)}</option>`).join("")}</select>` : ""}` : ""}
+      ${what === "book" ? `<select id="sel-shelf" class="sel-shelf" aria-label="Add to a shelf"><option value="">Add ${n > 1 ? "them" : "it"} to a shelf…</option>${shelfList().map((s) => `<option>${esc(s)}</option>`).join("")}</select>
+        <div class="selbar-later"><button class="btn small" data-act="sel-later" data-on="1">Save for later</button><button class="btn small" data-act="sel-later" data-on="">Back on the shelves</button></div>` : ""}` : ""}
   </div>`;
 }
 function examplesNotice() {
@@ -264,8 +279,12 @@ function readingLog() {
   const top = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([id, n]) => ({ it: S.lib.items.find((i) => i.id === id), n })).filter((x) => x.it);
   const who = S.kid ? S.kid + "'s" : multiKids() ? "Family" : "";
   const last = reads.slice().sort((a, b) => (a.d < b.d ? 1 : -1))[0];
-  return `<div class="log" aria-label="${esc(who)} reading log">
-    <div class="log-h"><span class="lbl">${who ? esc(who) + " reading log" : "Reading log"}</span>${last ? `<span class="hint-n">Last read: ${esc(last.it.title)}, ${esc(niceDate(last.d))}</span>` : ""}</div>
+  // Folded to one line by default so the books show on the first screen.
+  return `<details class="log" id="log"${S.logOpen ? " open" : ""}>
+    <summary class="log-sum"><span class="lbl">${who ? esc(who) + " reading log" : "Reading log"}</span>
+      <span class="log-line">${reads.length ? `${st} ${st === 1 ? "night" : "nights"} in a row · ${week} this week` : "Nothing logged yet"}</span>
+      <svg class="chev" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+    ${last ? `<p class="hint-n log-last">Last read: ${esc(last.it.title)}, ${esc(niceDate(last.d))}</p>` : ""}
     <div class="log-stats">
       <div><b>${st}</b><span>${st === 1 ? "night" : "nights"} in a row</span></div>
       <div><b>${week}</b><span>${week === 1 ? "story" : "stories"} this week</span></div>
@@ -273,11 +292,15 @@ function readingLog() {
     </div>
     ${top.length ? `<div class="loved"><span class="lbl">Most loved</span>${top.map((x) => `<button class="loved-b" data-open="${esc(x.it.id)}"><span class="mini">${bookArt(x.it)}</span><span>${esc(x.it.title)}<small>${x.n} ${x.n === 1 ? "read" : "reads"}</small></span></button>`).join("")}</div>` :
       `<p class="hint-n">${S.canEdit ? "Open a book and tap “We read this tonight” to start the log." : "No stories logged yet."}</p>`}
-  </div>`;
+  </details>`;
 }
 
+// Books saved for later stay off the shelves and out of the story picker until they're brought back.
+const laterKid = () => (multiKids() ? "the kids are" : (S.lib.kids[0] ? S.lib.kids[0].name + " is" : "they're"));
 function booksView() {
-  const items = filtered("book", "own");
+  const all = filtered("book", "own");
+  const items = all.filter((i) => !i.later), later = all.filter((i) => i.later);
+  const onShelf = S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && !i.later && matchesKid(i)).length;
   return `<section class="night" aria-label="Books">
     <svg class="treeline" viewBox="0 0 1200 230" preserveAspectRatio="none" aria-hidden="true"><path fill="#0a1d13" opacity=".85" d="M0 0h1200v40l-30 60-25-45-20 70-35-80-30 50-25-70-40 110-30-90-25 40-30-60-35 120-30-100-20 50-35-70-30 90-25-60-40 80-30-110-25 60-30-40-35 100-25-80-30 50-40-90-25 70-30-50-35 110-30-70-25 40-35-80-30 60-25-50-40 100-30-60-30 50-25-70-20 40V0z"/></svg>
     <canvas class="stars" aria-hidden="true"></canvas>
@@ -286,7 +309,7 @@ function booksView() {
         <div>
           <p class="eyebrow">Deep in the whispering woods…</p>
           <h2>The Story Grove</h2>
-          <p class="sub">${count("book", "own")} ${count("book", "own") === 1 ? "book" : "books"} in the grove${S.kid ? " for " + esc(S.kid) : ""}. Tap a cover to open it.</p>
+          <p class="sub">${onShelf} ${onShelf === 1 ? "book" : "books"} in the grove${S.kid ? " for " + esc(S.kid) : ""}. Tap a cover to open it.</p>
           <div class="hero-acts"><button class="btn gold" data-act="pick-story">Pick tonight's story</button>${S.canEdit ? `<button class="btn" data-act="shelves">Edit shelves</button>` : ""}</div>
         </div>
         <svg class="moon" viewBox="0 0 100 100" aria-hidden="true">
@@ -297,11 +320,16 @@ function booksView() {
         </svg>
       </div>
       ${readingLog()}
-      ${filtersHtml("Search books, authors, tags", true, true)}
+      ${filtersHtml("Search books", true, true, { sorts: ["", "new", "read"], jump: shelfNames(items) })}
       ${examplesNotice()}
       ${outgrownNotice("book")}
       ${items.length ? themeShelves(items) :
-        `<div class="empty">${S.q || S.age || S.tag ? "No books match that search." : "The grove is waiting for its first story."}</div>`}
+        `<div class="empty">${S.q || S.age || S.tag ? (later.length ? "No books on the shelves match that. Some saved for later do, below." : "No books match that search.") : later.length ? "Every book is saved for later right now." : "The grove is waiting for its first story."}</div>`}
+      ${later.length ? `<details class="later" id="later"${S.laterOpen || S.q ? " open" : ""}>
+        <summary><span class="later-t">Saved for later <span class="n">${later.length}</span></span><span class="later-s">Waiting until ${esc(laterKid())} older. Not on the shelves or in the story picker.</span>
+          <svg class="chev" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+        <div class="shelf shelf-row">${later.map(bookCard).join("")}</div>
+      </details>` : ""}
     </div>
   </section>`;
 }
@@ -315,15 +343,20 @@ function bookCard(it) {
 }
 // One row per shelf, biggest first, each scrolling sideways. A book on two shelves shows on both;
 // books on no shelf sit in "More stories".
-function themeShelves(items) {
+function shelfGroups(items) {
   const groups = {}, list = shelfList();
   for (const it of items) {
     const on = shelvesOf(it).filter((n) => list.includes(n));
     for (const n of on.length ? on : [OTHER]) (groups[n] ||= []).push(it);
   }
   const names = Object.keys(groups).sort((a, b) => (a === OTHER) - (b === OTHER) || groups[b].length - groups[a].length || list.indexOf(a) - list.indexOf(b));
+  return { groups, names };
+}
+const shelfNames = (items) => shelfGroups(items).names;
+function themeShelves(items) {
+  const { groups, names } = shelfGroups(items);
   if (names.length === 1) return `<div class="shelf">${items.map(bookCard).join("")}</div>`;
-  return names.map((n) => `<h3 class="group theme-h">${esc(n)} <span class="n">${groups[n].length}</span></h3>
+  return names.map((n, i) => `<h3 class="group theme-h" id="shelf-${i}">${esc(n)} <span class="n">${groups[n].length}</span></h3>
     <div class="shelf shelf-row">${groups[n].map(bookCard).join("")}</div>`).join("");
 }
 function toyCard(it) { return `<button class="toy${picked(it)}" data-open="${esc(it.id)}"${S.sel ? ` aria-pressed="${S.sel.has(it.id)}"` : ""}>${pickMark(it)}${toyBlock(it)}<span class="tt">${esc(it.title)}</span>${tagsHtml(it)}</button>`; }
@@ -336,7 +369,7 @@ function toysView() {
     <div class="inner">
       <h2>The Toy Clearing</h2>
       <p class="sub">${out.length} out to play, ${away.length} resting in the hollow.${last != null ? ` Last rotated ${last === 0 ? "today" : last === 1 ? "yesterday" : last + " days ago"}.` : ""}</p>
-      ${filtersHtml("Search toys", true, true)}
+      ${filtersHtml("Search toys", true, true, { sorts: ["", "new"] })}
       ${examplesNotice()}
       ${outgrownNotice("toy")}
       ${S.rotateMsg ? `<div class="notice"><span>${S.rotateMsg}</span><button class="btn small ghost" data-act="dismiss-rotate">OK</button></div>` : ""}
@@ -380,6 +413,9 @@ function claimHtml(it) {
       <button class="btn small primary" type="submit">Claim it</button>
       <button class="btn small ghost" type="button" data-act="claim-cancel">Cancel</button></form>`;
   }
+  // Once a visitor has claimed something, this browser remembers their name, so the next claim is one tap.
+  if (S.myName) return `<button class="btn small primary" data-claimas="${esc(it.id)}">I'll get this</button>
+    <button class="linkish" data-claim="${esc(it.id)}">as ${esc(S.myName)} · change</button>`;
   return `<button class="btn small primary" data-claim="${esc(it.id)}">I'll get this</button>`;
 }
 function isAmazon(url) { try { return /(^|\.)amazon\.|(^|\.)amzn\.(to|com)$|^a\.co$/i.test(new URL(url).hostname); } catch (e) { return false; } }
@@ -401,7 +437,7 @@ function wishView() {
       <article class="gift${S.claims[it.id] ? " is-claimed" : ""}">
         <span class="ribbon" aria-hidden="true"></span>
         <button class="ph" style="border:0;padding:0;background:${it.kind === "book" ? JEWELS[hash(it.title) % JEWELS.length] : TOYCOLORS[hash(it.title) % TOYCOLORS.length]}" data-open="${esc(it.id)}" aria-label="Open ${esc(it.title)}">
-          ${it.photo ? `<img src="${esc(it.photo)}" alt="">` : it.kind === "book" ? leafSvg(30) : `<span class="block" style="font-family:var(--f-play);font-size:2rem;color:#fff">${esc((String(it.title).trim()[0] || "?").toUpperCase())}</span>`}
+          ${it.photo ? img(it.photo) : it.kind === "book" ? leafSvg(30) : `<span class="block" style="font-family:var(--f-play);font-size:2rem;color:#fff">${esc((String(it.title).trim()[0] || "?").toUpperCase())}</span>`}
         </button>
         <div class="body">
           <span class="gt">${esc(it.title)}${it.author ? ` <span class="hint">by ${esc(it.author)}</span>` : ""}</span>
@@ -442,6 +478,7 @@ function detailSheet(m) {
     const a = [`<button class="btn" data-edit="${esc(it.id)}">Edit</button>`];
     if (it.list === "own") {
       if (!book) a.push(`<button class="btn" data-act="toggle-store">${it.stored ? "Bring out to play" : "Put away"}</button>`);
+      if (book) a.push(`<button class="btn" data-act="toggle-later">${it.later ? "Back on the shelves" : "Save for later"}</button>`);
       a.push(`<button class="btn" data-act="pass-pick">Move to pass-along</button>`);
     }
     if (it.list === "pass") a.push(`<button class="btn" data-act="pass-back">Bring it back</button>`, `<button class="btn ghost" data-act="${m.confirmDel ? "del-yes" : "del-detail"}">${m.confirmDel ? "Yes, it's gone" : "It's gone, remove it"}</button>`);
@@ -458,7 +495,7 @@ function detailSheet(m) {
     </div>`;
   }
   return `<div class="scrim" data-act="close"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="dt">
-    <header><h3 id="dt">${book ? "Book" : "Toy"}${listName}${it.stored ? " (put away)" : ""}</h3><button class="btn small ghost" data-act="close" aria-label="Close">Close</button></header>
+    <header><h3 id="dt">${book ? "Book" : "Toy"}${listName}${it.stored ? " (put away)" : ""}${it.later && it.list === "own" ? " (saved for later)" : ""}</h3><button class="btn small ghost" data-act="close" aria-label="Close">Close</button></header>
     <div class="content"><div class="detail">
       <div class="art${book ? "" : " sq"}">${art}</div>
       <div style="min-width:0">
@@ -500,6 +537,7 @@ function editSheet(m) {
         ${canScan ? `<button type="button" class="btn" data-act="isbn-scan">Scan</button>` : ""}</div>
         ${m.scanning ? `<div class="scan"><video id="scan-video" playsinline muted autoplay></video><span class="hint">Point the camera at the barcode on the back.</span><button type="button" class="btn small" data-act="scan-stop">Stop scanning</button></div>` : ""}
         <span class="hint" aria-live="polite">${esc(m.lookup || "Type the ISBN and tap Fill in to get the title, author and cover.")}</span></div>` : ""}
+      ${dupNotice(m)}
       <div class="field"><label for="f-title">${book ? "Title" : "Name"}</label><input id="f-title" required value="${esc(it.title || "")}"></div>
       ${book ? `<div class="field"><label for="f-author">Author</label><input id="f-author" value="${esc(it.author || "")}"></div>` : ""}
       ${book && it.list === "own" ? `<div class="field"><span class="lbl">Shelves <span class="hint">(tap all that fit)</span></span><div class="seg">
@@ -515,9 +553,19 @@ function editSheet(m) {
       <div class="field"><label for="f-note">Notes</label><textarea id="f-note" rows="2" placeholder="${it.list === "wish" ? "Size, color, edition…" : "Who gave it, a favorite page…"}">${esc(it.note || "")}</textarea></div>
       <div class="foot">
         ${m.isNew ? "<span></span>" : `<button type="button" class="btn ghost" data-act="${m.confirmDel ? "del-yes" : "del"}">${m.confirmDel ? "Yes, remove it" : "Remove"}</button>`}
-        <button type="submit" class="btn ${book ? "gold" : "primary"}"${m.uploading ? " disabled" : ""}>${m.isNew ? "Add to " + (it.list === "wish" ? "wishing well" : book ? "grove" : "clearing") : "Save changes"}</button>
+        <button type="submit" class="btn ${book ? "gold" : "primary"}"${m.uploading ? " disabled" : ""}>${m.isNew ? (m.dup ? "Add it anyway" : "Add to " + (it.list === "wish" ? "wishing well" : book ? "grove" : "clearing")) : "Save changes"}</button>
       </div>
     </form></div></div>`;
+}
+// Catches a book or toy that's already here (same ISBN, or same title) before a second copy is added.
+function findDup(it) {
+  const isbn = cleanIsbn(it.isbn), t = norm(it.title);
+  return S.lib.items.find((x) => x.id !== it.id && x.kind === it.kind && ((isbn && cleanIsbn(x.isbn) === isbn) || (t.length > 2 && norm(x.title) === t)));
+}
+function dupNotice(m) {
+  const d = m.isNew && m.dup && findItem(m.dup); if (!d) return "";
+  const where = d.list === "wish" ? "on the wish list" : d.list === "pass" ? "in the pass-along box" : d.later ? "saved for later" : d.stored ? "put away in the hollow" : d.kind === "book" ? "on the shelves" : "out to play";
+  return `<div class="notice dup"><span><b>You already have this one.</b> “${esc(d.title)}” is ${where}.</span><button type="button" class="btn small" data-open="${esc(d.id)}">Show me</button></div>`;
 }
 function kidSheet(m) {
   const k = m.kid;
@@ -556,7 +604,7 @@ function storySheet(m) {
 function pickStory() {
   const kid = kidByName(S.kid);
   const age = kidAgeGroup(kid);
-  let pool = S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && matchesKid(i) && !(i.tags || []).includes("Outgrown"));
+  let pool = S.lib.items.filter((i) => i.kind === "book" && i.list === "own" && !i.later && matchesKid(i) && !(i.tags || []).includes("Outgrown"));
   if (age) { const fit = pool.filter((i) => !i.ages || i.ages === age); if (fit.length) pool = fit; }
   const prev = S.modal && S.modal.type === "story" && S.modal.item ? S.modal.item.id : null;
   if (pool.length > 1 && prev) pool = pool.filter((i) => i.id !== prev);
@@ -598,7 +646,7 @@ function render() {
           <svg width="44" height="44" viewBox="0 0 48 48" aria-hidden="true"><path d="M24 3c-11 0-20 6-20 14 0 2 2 3 4 3h32c2 0 4-1 4-3 0-8-9-14-20-14z" fill="#c0473a"/><circle cx="15" cy="11" r="2.6" fill="#fdfbe6"/><circle cx="27" cy="8" r="2" fill="#fdfbe6"/><circle cx="35" cy="14" r="2.4" fill="#fdfbe6"/><path d="M14 20h20v18a4 4 0 0 1-4 4H18a4 4 0 0 1-4-4z" fill="#efe6cf"/><path d="M21 42v-9a3 3 0 0 1 6 0v9z" fill="#6a3a22"/><circle cx="31" cy="27" r="2.2" fill="#e2b34f"/><path d="M2 44c6-3 10-3 22-3s16 0 22 3z" fill="#2f7a4f"/></svg>
           <div style="min-width:0"><h1>${esc(S.lib.name || "Our Little Library")}</h1><p>Books, toys and wishes</p></div>
         </div>
-        <div class="tools">${status}${mode}${S.canEdit ? `<button class="btn small" data-act="rename">Rename</button>` : ""}<button class="btn small" data-act="share">${shareIcon} Share</button></div>
+        <div class="tools">${status}${mode}<button class="btn small share-b" data-act="share" aria-label="Share">${shareIcon}<span> Share</span></button></div>
       </header>
       ${S.loadErr ? `<div class="notice"><span>${esc(S.loadErr)}</span></div>` : ""}
       ${kidBar()}
@@ -606,6 +654,7 @@ function render() {
       <main>${view}</main>
       <footer class="foot-note">
         <span>${S.canEdit ? "Send family this page's link so they can browse and claim wish-list gifts. They don't need an account." : "Made with love for the little readers and players in this family."}</span>
+        ${S.canEdit ? `<button class="linkish" data-act="rename">Rename the library</button>` : ""}
         ${S.canEdit && !multiKids() ? `<button class="linkish" data-act="add-kid">Add a child</button>` : ""}
         ${S.session ? `<button class="linkish" data-act="signout">Sign out${S.session.user && S.session.user.email ? " (" + esc(S.session.user.email) + ")" : ""}</button>` : `<button class="linkish" data-act="signin">Admin sign in</button>`}
       </footer>
@@ -618,6 +667,7 @@ function render() {
   lastModal = S.modal;
   if (active) { const el = document.getElementById(active); if (el) { el.focus(); if (caret != null && el.setSelectionRange) el.setSelectionRange(caret, caret); } }
   if (S.tab === "books") startStars();
+  watchStick();
 }
 const shareIcon = `<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" style="vertical-align:-2px"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ico = (d) => `<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
@@ -787,6 +837,7 @@ async function runLookup() {
     if (b.author) it.author = b.author;
     if (b.cover && !it.photo) it.photo = b.cover;
     S.modal.lookup = b.cover ? "Found it, cover and all." : "Found it. No cover picture there, so snap one if you like.";
+    const dup = S.modal.isNew && findDup(it); if (dup) S.modal.dup = dup.id;
   } catch (_) {
     if (S.modal) S.modal.lookup = "Couldn't reach Open Library just now. Try again in a moment.";
   }
@@ -987,7 +1038,7 @@ async function findTyped() {
 function addPicked() {
   const m = S.modal;
   const pick = m.found.filter((f) => f.on);
-  for (const f of pick) S.lib.items.push({ id: uid(), kind: "book", list: "own", title: f.title, author: f.author, isbn: f.isbn, photo: f.cover.replace("-M.jpg", "-L.jpg"), tags: [], ages: "", forKid: "" });
+  for (const f of pick) S.lib.items.push({ id: uid(), kind: "book", list: "own", title: f.title, author: f.author, isbn: f.isbn, photo: f.cover.replace("-M.jpg", "-L.jpg"), tags: [], ages: "", forKid: "", added: Date.now() });
   S.tab = "books"; S.modal = null; changed(); fillThemes();
 }
 
@@ -999,6 +1050,14 @@ function keepKidForm() {
   if (n) k.name = n.value.trim(); if (b) k.birthday = b.value;
 }
 document.addEventListener("click", async (e) => {
+  // The reading log and "Saved for later" fold open natively; remember which way they were left.
+  const sum = e.target.closest("summary");
+  if (sum) {
+    const det = sum.parentElement, open = !det.open;
+    if (det.id === "log") { S.logOpen = open; try { localStorage.setItem("fl-log", open ? "1" : ""); } catch (_) {} }
+    if (det.id === "later") S.laterOpen = open;
+    return;
+  }
   const t = e.target.closest("button, .scrim, [data-act]");
   if (!t) return;
   const d = t.dataset;
@@ -1029,6 +1088,7 @@ document.addEventListener("click", async (e) => {
   if (d.kcolor) { keepKidForm(); S.modal.kid.color = d.kcolor; render(); return; }
   if (d.read !== undefined && S.modal) { logRead(S.modal.item, d.read); S.modal.justRead = true; render(); return; }
   if (d.plan) { const it = S.modal.item; it.list = "pass"; it.passPlan = d.plan; it.stored = false; S.modal.passPick = false; changed(); return; }
+  if (d.claimas) { claimAs(d.claimas, S.myName); return; }
   if (d.claim) { S.claimOpen = d.claim; render(); const inp = document.getElementById("claim-name-" + d.claim); if (inp) inp.focus(); return; }
   if (d.unclaim) { const { error } = await sb.rpc("unclaim_item", { p_item_id: d.unclaim, p_token: claimToken() }); if (error) { S.saveErr = "Couldn't undo the claim just now."; render(); } else loadClaims(); return; }
   if (d.got) { const it = findItem(d.got); if (it) { it.list = "own"; if (S.claims[it.id]) sb.rpc("unclaim_item", { p_item_id: it.id, p_token: claimToken() }).then(loadClaims); changed(); } return; }
@@ -1051,8 +1111,8 @@ document.addEventListener("click", async (e) => {
     case "bulk": S.modal = { type: "bulk", step: "pick", found: [], typed: "" }; render(); break;
     case "bulk-find": findTyped(); break;
     case "bulk-add": addPicked(); break;
-    case "quick-scan": S.tab = "books"; S.modal = { type: "edit", isNew: true, item: { id: uid(), kind: "book", list: "own", title: "", tags: [], ages: "", forKid: "" } }; render(); scanBarcode(); break;
-    case "add": S.modal = { type: "edit", isNew: true, item: { id: uid(), kind: d.kind, list: d.list, title: "", tags: [], ages: kidAgeGroup(kidByName(S.kid)), forKid: S.kid } }; render(); $("#f-title") && $("#f-title").focus(); break;
+    case "quick-scan": S.tab = "books"; S.modal = { type: "edit", isNew: true, item: { id: uid(), kind: "book", list: "own", title: "", tags: [], ages: "", forKid: "", added: Date.now() } }; render(); scanBarcode(); break;
+    case "add": S.modal = { type: "edit", isNew: true, item: { id: uid(), kind: d.kind, list: d.list, title: "", tags: [], ages: kidAgeGroup(kidByName(S.kid)), forKid: S.kid, added: Date.now() } }; render(); $("#f-title") && $("#f-title").focus(); break;
     case "add-kid": S.modal = { type: "kid", isNew: true, kid: { id: uid(), name: "", animal: ANIMALS[S.lib.kids.length % ANIMALS.length], color: KIDCOLORS[S.lib.kids.length % KIDCOLORS.length], birthday: "" } }; render(); $("#k-name") && $("#k-name").focus(); break;
     case "edit-kid": { const k = kidByName(S.kid); if (k) { S.modal = { type: "kid", isNew: false, orig: k.name, kid: { ...k } }; render(); } break; }
     case "kid-del": keepKidForm(); S.modal.confirmDel = true; render(); break;
@@ -1068,6 +1128,8 @@ document.addEventListener("click", async (e) => {
     case "pick-story": pickStory(); break;
     case "story-read": logRead(S.modal.item, S.kid); S.modal.justRead = true; render(); break;
     case "toggle-store": S.modal.item.stored = !S.modal.item.stored; changed(); break;
+    case "toggle-later": S.modal.item.later = !S.modal.item.later; if (!S.modal.item.later) delete S.modal.item.later; changed(); break;
+    case "sel-later": S.lib.items.forEach((i) => { if (S.sel.has(i.id)) { if (d.on) i.later = true; else delete i.later; } }); S.sel = new Set(); changed(); break;
     case "pass-pick": S.modal.passPick = true; render(); break;
     case "pass-back": S.modal.item.list = "own"; S.modal.item.tags = (S.modal.item.tags || []).filter((x) => x !== "Outgrown"); S.modal = null; changed(); break;
     case "move-outgrown": S.lib.items.forEach((i) => { if (i.kind === d.kind && i.list === "own" && (i.tags || []).includes("Outgrown")) { i.list = "pass"; i.passPlan = i.passPlan || "Undecided"; i.stored = false; } }); changed(); break;
@@ -1080,6 +1142,51 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "Escape" && S.sel) { S.sel = null; render(); }
   if (e.key === "Enter" && e.target.id === "f-isbn") { e.preventDefault(); runLookup(); }
 });
+// On a phone, pull a pop-up down to close it. Forms only close from the grab bar at the top,
+// so a scroll inside one can't throw away what was typed.
+// Listens on the touched element itself: if the screen redraws mid-swipe that element leaves
+// the page, and its touch events would no longer reach the document.
+document.addEventListener("touchstart", (e) => {
+  const sh = e.target.closest(".sheet");
+  if (!sh || !S.modal || !matchMedia("(max-width: 700px)").matches) return;
+  const fromTop = !!e.target.closest(".sheet header");
+  const formy = ["edit", "kid", "auth", "bulk", "rename", "shelves"].includes(S.modal.type);
+  if (!fromTop && (formy || sh.scrollTop > 0 || e.target.closest("input, textarea, select, video, .seg, .shelf-row"))) return;
+  const el = e.target, y0 = e.touches[0].clientY, modal = S.modal;
+  let dy = 0;
+  const move = (ev) => {
+    dy = Math.max(0, ev.touches[0].clientY - y0);
+    const cur = $(".sheet"); if (!cur) return;
+    cur.style.transition = "none";
+    cur.style.transform = dy ? `translateY(${dy}px)` : "";
+    if (dy && ev.cancelable) ev.preventDefault();
+  };
+  const end = () => {
+    el.removeEventListener("touchmove", move); el.removeEventListener("touchend", end); el.removeEventListener("touchcancel", end);
+    const cur = $(".sheet"); if (!cur) return;
+    cur.style.transition = "transform .2s ease";
+    if (dy > 90) {
+      cur.style.transform = "translateY(100%)";
+      setTimeout(() => { if (S.modal === modal) { if (S.modal.scanning) S.modal.scanning = false; S.modal = null; render(); } }, 180);
+    } else cur.style.transform = "";
+  };
+  el.addEventListener("touchmove", move, { passive: false });
+  el.addEventListener("touchend", end);
+  el.addEventListener("touchcancel", end);
+}, { passive: true });
+// Folds the filter bar down to just the search row once it's stuck to the top of the screen.
+let stickObs = null;
+function watchStick() {
+  if (stickObs) stickObs.disconnect();
+  const mark = $(".stick-mark"); if (!mark || !("IntersectionObserver" in window)) return;
+  stickObs = new IntersectionObserver(([en]) => {
+    const stuck = !en.isIntersecting && en.boundingClientRect.top < 0;
+    if (stuck === S.stuck) return;
+    S.stuck = stuck;
+    const f = $(".filters"); if (f) f.classList.toggle("stuck", stuck);
+  });
+  stickObs.observe(mark);
+}
 document.addEventListener("input", (e) => {
   if (e.target.id === "q") { S.q = e.target.value; render(); }
   if (e.target.id === "b-typed" && S.modal) S.modal.typed = e.target.value;
@@ -1090,6 +1197,8 @@ function keepForm() {
   for (const [k, id] of [["title", "f-title"], ["author", "f-author"], ["isbn", "f-isbn"], ["link", "f-link"], ["note", "f-note"]]) { const x = v(id); if (x !== undefined) it[k] = x; }
 }
 document.addEventListener("change", async (e) => {
+  if (e.target.id === "sort") { S.sort = e.target.value; try { localStorage.setItem("fl-sort", S.sort); } catch (_) {} render(); return; }
+  if (e.target.id === "jump" && e.target.value) { const h = document.getElementById("shelf-" + e.target.value); e.target.value = ""; if (h) h.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (e.target.id === "sel-shelf" && e.target.value && S.sel) {
     const n = e.target.value;
     S.lib.items.forEach((i) => { if (S.sel.has(i.id)) setShelves(i, [...shelvesOf(i), n]); });
@@ -1111,6 +1220,7 @@ document.addEventListener("submit", async (e) => {
     keepForm();
     const it = S.modal.item;
     if (!it.title) return;
+    if (S.modal.isNew && !S.modal.dup) { const dup = findDup(it); if (dup) { S.modal.dup = dup.id; render(); return; } }
     if (it.link && !/^https?:\/\//i.test(it.link)) it.link = "https://" + it.link;
     delete it.example;
     const i = S.lib.items.findIndex((x) => x.id === it.id);
@@ -1157,16 +1267,17 @@ document.addEventListener("submit", async (e) => {
   } else if (e.target.dataset.claimform) {
     const id = e.target.dataset.claimform;
     const who = e.target.who.value.trim(); if (!who) return;
-    S.myName = who;
-    try { localStorage.setItem("fl-name", who); } catch (_) {}
-    const { error } = await sb.rpc("claim_item", { p_item_id: id, p_name: who, p_token: claimToken() });
-    if (error) {
-      S.saveErr = error.code === "23505" ? "Someone just claimed that one. Pick another wish?" : "Couldn't save your claim just now.";
-      S.claimOpen = null;
-    } else { S.claimOpen = null; S.saveErr = ""; }
-    loadClaims();
+    claimAs(id, who);
   }
 });
+async function claimAs(id, who) {
+  S.myName = who;
+  try { localStorage.setItem("fl-name", who); } catch (_) {}
+  const { error } = await sb.rpc("claim_item", { p_item_id: id, p_name: who, p_token: claimToken() });
+  S.saveErr = error ? (error.code === "23505" ? "Someone just claimed that one. Pick another wish?" : "Couldn't save your claim just now.") : "";
+  S.claimOpen = null;
+  loadClaims();
+}
 
 /* ---------- sign in ---------- */
 async function refreshAuth() {
